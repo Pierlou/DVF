@@ -1,7 +1,5 @@
 import numpy as np
 import pandas as pd
-import pandas_profiling
-import plotly_express as px
 import os
 import time
 from unidecode import unidecode
@@ -49,8 +47,7 @@ for year in [2017, 2018, 2019, 2020, 2021, 2022]:
     ventes['month'] = ventes['date_mutation'].swifter.apply(lambda x: int(x.split('-')[1]))
     print(len(ventes))
 
-    ## drop mutations multitypes
-    # multitypes = ventes[['id_mutation', 'code_type_local']].value_counts().loc[ventes[['id_mutation', 'code_type_local']].value_counts()>1].unstack()
+    ## drop mutations multitypes pour les prix au m², impossible de classr une mutation qui contient X maisons et Y appartements par exemple
     multitypes = ventes[['id_mutation', 'code_type_local']].value_counts()
     multitypes = multitypes.loc[multitypes>1].unstack()
     mutations_drop = multitypes.loc[sum([multitypes[c].isna() for c in multitypes.columns])<len(multitypes.columns)-1].index
@@ -63,7 +60,8 @@ for year in [2017, 2018, 2019, 2020, 2021, 2022]:
     ventes_nodup = ventes.drop_duplicates(subset = 'id_mutation')
     print(len(ventes_nodup))
     ventes_nodup = pd.merge(ventes_nodup, surfaces, on='id_mutation')
-
+    
+    ## pour une mutation donnée la valeur foncière est globale, on la divise par la surface totale, sachant qu'on n'a gardé que les mutations monotypes
     ventes_nodup['prix_m2'] = ventes_nodup['valeur_fonciere']/ventes_nodup['surface_totale_mutation']
     ventes_nodup['prix_m2'] = ventes_nodup['prix_m2'].replace([np.inf, -np.inf], np.nan)
 
@@ -76,10 +74,12 @@ for year in [2017, 2018, 2019, 2020, 2021, 2022]:
     for m in range(1, 13):
         dfs_dict= {}
         for echelle in echelles_of_interest:
+            ## ici on utilise bien le df ventes, qui contient l'eneemble des ventes sans filtres autres que les types de mutations d'intérêt
             nb = ventes.loc[ventes['code_type_local'].isin(types_of_interest)].groupby([f'code_{echelle}', 'month', 'type_local'])['valeur_fonciere'].count()
             nb_ = nb.loc[nb.index.get_level_values(1)==m].unstack().reset_index().drop('month', axis=1)
             nb_.columns = ['nb_ventes_'+unidecode(c.split(' ')[0].lower()) if c != f'code_{echelle}' else c for c in nb_.columns]
-
+            
+            ## pour mean et median on utlise le df nodup, dans lequel on a drop_dup sur les mutations
             mean = ventes_nodup.loc[ventes_nodup['code_type_local'].isin(types_of_interest)].groupby([f'code_{echelle}', 'month', 'type_local'])['prix_m2'].mean()
             mean_ = mean.loc[mean.index.get_level_values(1)==m].unstack().reset_index().drop('month', axis=1)
             mean_.columns = ['moy_prix_m2_'+unidecode(c.split(' ')[0].lower()) if c != f'code_{echelle}' else c for c in mean_.columns]
