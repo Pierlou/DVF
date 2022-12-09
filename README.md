@@ -6,7 +6,9 @@ Le fichier pipeline.py permet de générer des statistiques à partir des [donn�
 * nombre de mutations
 * moyenne des prix au m²
 * médiane des prix au m²
+
 pour chaque type de bien sélectionné (parmi : maisons, appartements, locaux, dépendances). Pour plus de cohérence, les mutations "multitypes" sont retirées pour le calcul des prix au m², mais conservées pour le dénombrement.
+
 _NB : pour l'échelle [EPCI](https://www.collectivites-locales.gouv.fr/institutions/les-epci), il est nécessaire de télécharger également [ces données](https://www.collectivites-locales.gouv.fr/institutions/liste-et-composition-des-epci-fiscalite-propre)_
 
 ## DAG
