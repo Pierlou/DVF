@@ -1,36 +1,20 @@
-# Infrastructure Airflow
+# Travaux sur la refonte de l'app DVF
+Ce repo contient les fichiers issus des travaux pour une nouvelle version de l'[app DVF](https://app.dvf.etalab.gouv.fr/).
 
-Ce repository a pour objectif de mettre en place rapidement une infrastructure Airflow permettant à chacun de tester son DAG avant mise en production.
+## Pipeline
+Le fichier pipeline.py permet de générer des statistiques à partir des [données des demandes de valeurs foncières](https://files.data.gouv.fr/geo-dvf/latest/csv/), agrégées à différentes échelles, et leur évolution dans le temps (au mois). Le choix a été fait de calculer les indicateurs suivants :
+* nombre de mutations
+* moyenne des prix au m²
+* médiane des prix au m²
+pour chaque type de bien sélectionné (parmi : maisons, appartements, locaux, dépendances). Pour plus de cohérence, les mutations "multitypes" sont retirées pour le calcul des prix au m², mais conservées pour le dénombrement.
+_NB : pour l'échelle [EPCI](https://www.collectivites-locales.gouv.fr/institutions/les-epci), il est nécessaire de télécharger également [ces données](https://www.collectivites-locales.gouv.fr/institutions/liste-et-composition-des-epci-fiscalite-propre)_
 
-L'infrastructure actuelle est basée sur du LocalExecutor (le scheduler, le webserver et worker sont hébergés sur le même container)
+## DAG
+Le répertoire [DAGs](https://airflow.apache.org/docs/apache-airflow/stable/concepts/dags.html) contient les scripts du DAG Airflow qui sera utilisé pour alimenter l'app DVF en production. Le processus suit les étapes suivantes :
+* récupération des données DVF à date
+* récupération des données EPCI à date
+* traitement des données brutes pour créer les indicateurs
+* export et exposition en postgres pour accessibilité
 
-## Installation
-
-```
-git clone git@github.com:etalab/data-engineering-stack.git
-cd data-engineering-stack
-
-# Create directories necessary for Airflow to work
-./1_prepareDirs.sh
-
-# Prepare .env file 
-./2_prepare_env.sh
-nano .env 
-# Edit POSTGRES_USER ; POSTGRES_PASSWORD ; POSTGRES_DB ; AIRFLOW_ADMIN_MAIL ; AIRFLOW_ADMIN_FIRSTNAME ; AIRFLOW_ADMIN_NAME ; AIRFLOW_ADMIN_PASSWORD
-
-# Launch services
-docker-compose up --build -d
-
-# After few seconds, you can connect to http://localhost:8080 with login : AIRFLOW_ADMIN_MAIL and password : AIRFLOW_ADMIN_PASSWORD
-```
-
-## Refresh dags
-
-```
-# Airflow used to have a little time before dag refreshing when dag is created. You can force refreshing with :
-./refreshBagDags.sh
-```
-
-## Connections
-
-Connections can be created manually or with python scripts `createConn.py` (using Airflow API) inside each projects. You need also to add your ssh key inside `ssh` folder of repository for the container to be able to see it in `/home/airflow/.ssh/` folder of container.
+## API
+Le fichier api_dvf.py permet de setup une API Flask sur la base de données des statistiques créée par le DAG.
