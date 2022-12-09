@@ -13,9 +13,20 @@ from unidecode import unidecode
 import swifter
 import gc
 import psycopg2
+from bs4 import BeautifulSoup
+import requests
+from ast import literal_eval
+
+def get_epci():
+    page = requests.get('https://unpkg.com/@etalab/decoupage-administratif/data/epci.json')
+    epci = page.json()
+    data = {e['code']: [m['code'] for m in e['membres']] for e in epci}
+    epci_list = [[k, m]for k in list(data.keys()) for m in data[k]]
+    pd.DataFrame(epci_list, columns=['code_epci', 'code_commune']).to_csv('/tmp/data/epci.csv', sep=',', encoding='utf8', index=False)
 
 def pipeline(ti):
     export = pd.DataFrame(None)
+    epci= pd.read_csv('/tmp/data/epci.csv', sep=',', encoding= 'utf8')
     to_keep = [
         'id_mutation',
         'date_mutation',
@@ -44,6 +55,7 @@ def pipeline(ti):
 #                nrows=500000
                     )
         df = df_[to_keep]
+        df = pd.merge(df, epci, on='code_commune')
         df['code_section'] = df['id_parcelle'].str[:10]
         df = df.drop('id_parcelle', axis=1)
 
@@ -81,12 +93,12 @@ def pipeline(ti):
         ## pour une mutation donnée la valeur foncière est globale, on la divise par la surface totale, sachant qu'on n'a gardé que les mutations monotypes
         ventes_nodup['prix_m2'] = ventes_nodup['valeur_fonciere']/ventes_nodup['surface_totale_mutation']
         ventes_nodup['prix_m2'] = ventes_nodup['prix_m2'].replace([np.inf, -np.inf], np.nan)
-
+        
         ## pas de prix ou pas de surface
         ventes_nodup = ventes_nodup.dropna(subset=['prix_m2'])
 
         types_of_interest = [1, 2, 4]
-        echelles_of_interest = ['departement', 'commune', 'section']
+        echelles_of_interest = ['departement', 'epci', 'commune', 'section']
         
         for m in range(1, 13):
             dfs_dict= {}
@@ -142,7 +154,6 @@ def pipeline(ti):
     """
     ti.xcom_push(key='query', value=query)
     export.to_csv('/tmp/data/stats_dvf.csv', sep=',', encoding='utf8', index=False)
-    
 
 credentials = {
     'host': "host.docker.internal",
@@ -187,19 +198,25 @@ with DAG(
     catchup=False
 ) as dag:
     task1 = BashOperator(
-        task_id='download_task',
+        task_id='download_dvf',
         bash_command="sh /opt/airflow/dags/dag_dvf/script_dl_dvf.sh "
     )
 
     task2 = PythonOperator(
-        task_id='processing_task',
+        task_id='get_epci',
+        python_callable=get_epci,
+    )
+
+    task3 = PythonOperator(
+        task_id='process_dvf',
         python_callable=pipeline,
     )
 
-    task3 = PostgresOperator(
+    task4 = PostgresOperator(
     task_id='create_table',
     postgres_conn_id='postgres_localhost',
-    # sql="""(%s, '{{ ti.xcom_pull(task_ids= 'processing_task', key='query') }}', %s)"""
+    ## à changer dans l'idéal pour adapter les colonnes selon les paramètres dans la process_dvf, mais actuellement pas de solution
+    # sql="""(%s, '{{ ti.xcom_pull(task_ids= 'process_dvf', key='query') }}', %s)"""
     sql="""
         DROP TABLE IF EXISTS stats_dvf CASCADE;
         CREATE UNLOGGED TABLE stats_dvf (
@@ -219,9 +236,9 @@ with DAG(
         """ 
     )
 
-    task4 = PythonOperator(
+    task5 = PythonOperator(
         task_id='upload_table',
         python_callable=upload,
     )
 
-    task1 >> task2 >> task3 >> task4
+    [task1, task2] >> task3 >> task4 >> task5
