@@ -1,20 +1,28 @@
 from flask import Flask, jsonify
 import json
-from sqlalchemy import create_engine
-import pandas as pd
-from ast import literal_eval
 from unidecode import unidecode
 from markupsafe import escape
+import psycopg2
+# from sqlalchemy import create_engine
+import pandas as pd
 
 app = Flask(__name__)
 
-config = pd.read_csv('config.csv', sep=',')
+config = pd.read_csv('config.csv', sep=',', dtype=str)
 id = config['id'][0]
 pwd = config['pwd'][0]
 host = config['host'][0]
 db = config['db'][0]
+port = config['port'][0]
 
-engine = create_engine(f'postgresql://{id}:{pwd}@{host}/{db}')
+# engine = create_engine(f'postgresql://{id}:{pwd}@{host}/{db}')
+
+conn = psycopg2.connect(
+    host=host,
+    database=db,
+    user=id,
+    password=pwd,
+    port=port)
 
 
 @app.route("/")
@@ -24,9 +32,57 @@ def hello_world():
 
 @app.route('/nation')
 def get_nation():
-    mutations = pd.read_sql("""SELECT * FROM stats_dvf WHERE echelle_geo='nation'""", engine)
-    dict_mutations = {'data': json.loads(mutations.to_json(orient = 'records'))}
-    return jsonify(dict_mutations)
+    with conn as connexion:
+        with connexion.cursor() as cursor:
+            cursor.execute("""SELECT * FROM stats_dvf WHERE echelle_geo='nation'""")
+            columns = [desc[0] for desc in cursor.description]
+            data=cursor.fetchall()
+    return jsonify({"data": [{k:v for k,v in zip(columns, d)} for d in data]})
+    
+    ## version avec sqlalchemy et pandas
+    # mutations = pd.read_sql("""SELECT * FROM stats_dvf WHERE echelle_geo='nation'""", engine)
+    # dict_mutations = {'data': json.loads(mutations.to_json(orient = 'records'))}
+    # return jsonify(dict_mutations)
+
+
+@app.route('/departement')
+def get_departement():
+    with conn as connexion:
+        with connexion.cursor() as cursor:
+            cursor.execute("""SELECT * FROM stats_dvf WHERE echelle_geo='departement'""")
+            columns = [desc[0] for desc in cursor.description]
+            data=cursor.fetchall()
+    return jsonify({"data": [{k:v for k,v in zip(columns, d)} for d in data]})
+
+
+@app.route('/epci')
+def get_epci():
+    with conn as connexion:
+        with connexion.cursor() as cursor:
+            cursor.execute("""SELECT * FROM stats_dvf WHERE echelle_geo='epci'""")
+            columns = [desc[0] for desc in cursor.description]
+            data=cursor.fetchall()
+    return jsonify({"data": [{k:v for k,v in zip(columns, d)} for d in data]})
+
+
+@app.route('/commune')
+def get_commune():
+    with conn as connexion:
+        with connexion.cursor() as cursor:
+            cursor.execute("""SELECT * FROM stats_dvf WHERE echelle_geo='commune'""")
+            columns = [desc[0] for desc in cursor.description]
+            data=cursor.fetchall()
+    return jsonify({"data": [{k:v for k,v in zip(columns, d)} for d in data]})
+
+
+@app.route('/section')
+def get_section():
+    with conn as connexion:
+        with connexion.cursor() as cursor:
+            cursor.execute("""SELECT * FROM stats_dvf WHERE echelle_geo='section'""")
+            columns = [desc[0] for desc in cursor.description]
+            data=cursor.fetchall()
+    return jsonify({"data": [{k:v for k,v in zip(columns, d)} for d in data]})
 
 
 @app.route('/geo')
@@ -52,14 +108,15 @@ def get_echelle(echelle_geo= None, code_geo=None, dateminimum=None, datemaximum=
     queries = [echelle_query, code_query, date_query]
     queries = [q for q in queries if q!='']
     
-    if len(queries)==0:
-        mutations = pd.read_sql("""SELECT * FROM stats_dvf""",
-            engine)
-    else:
-        mutations = pd.read_sql(f"""SELECT * FROM stats_dvf WHERE """ + ' AND '.join(queries),
-            engine)
-    dict_mutations = {'data': json.loads(mutations.to_json(orient = 'records'))}
-    return jsonify(dict_mutations)
+    with conn as connexion:
+        with connexion.cursor() as cursor:
+            if len(queries)==0:
+                cursor.execute("""SELECT * FROM stats_dvf""")
+            else:
+                cursor.execute(f"""SELECT * FROM stats_dvf WHERE """ + ' AND '.join(queries))
+            columns = [desc[0] for desc in cursor.description]
+            data=cursor.fetchall()
+    return jsonify({"data": [{k:v for k,v in zip(columns, d)} for d in data]})
     
 
 # @app.route('/geo/<echelle_geo>')
