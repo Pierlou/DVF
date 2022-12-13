@@ -9,13 +9,13 @@ Le fichier pipeline.py permet de générer des statistiques à partir des [donn�
 
 pour chaque type de bien sélectionné (parmi : maisons, appartements, locaux, dépendances). Pour plus de cohérence, les mutations "multitypes" sont retirées pour le calcul des prix au m², mais conservées pour le dénombrement.
 
-_NB : pour l'échelle [EPCI](https://www.collectivites-locales.gouv.fr/institutions/les-epci), il est nécessaire de télécharger également [ces données](https://www.collectivites-locales.gouv.fr/institutions/liste-et-composition-des-epci-fiscalite-propre)_
+_NB : pour l'échelle [EPCI](https://www.collectivites-locales.gouv.fr/institutions/les-epci), il est nécessaire de télécharger également [ces données](https://www.collectivites-locales.gouv.fr/institutions/liste-et-composition-des-epci-fiscalite-propre)._
 
 ## DAG
-Le répertoire [DAGs](https://airflow.apache.org/docs/apache-airflow/stable/concepts/dags.html) contient les scripts du DAG Airflow qui sera utilisé pour alimenter l'app DVF en production. Le processus suit les étapes suivantes :
+Le répertoire DAGs contient les scripts du [DAG Airflow](https://airflow.apache.org/docs/apache-airflow/stable/concepts/dags.html) qui sera utilisé pour alimenter l'app DVF en production. Le processus suit les étapes suivantes :
 * récupération des données DVF à date
 * récupération des données EPCI à date
-* traitement des données brutes pour créer les indicateurs
+* traitement des données brutes pour créer les indicateurs (basé sur pipeline.py)
 * export et exposition en postgres pour accessibilité
 
 ## API
