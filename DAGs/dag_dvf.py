@@ -17,16 +17,18 @@ from bs4 import BeautifulSoup
 import requests
 from ast import literal_eval
 
+DATADIR="/tmp/data"
+
 def get_epci():
     page = requests.get('https://unpkg.com/@etalab/decoupage-administratif/data/epci.json')
     epci = page.json()
     data = {e['code']: [m['code'] for m in e['membres']] for e in epci}
     epci_list = [[k, m]for k in list(data.keys()) for m in data[k]]
-    pd.DataFrame(epci_list, columns=['code_epci', 'code_commune']).to_csv('/tmp/data/epci.csv', sep=',', encoding='utf8', index=False)
+    pd.DataFrame(epci_list, columns=['code_epci', 'code_commune']).to_csv(DATADIR+'/epci.csv', sep=',', encoding='utf8', index=False)
 
 def pipeline(ti):
     export = pd.DataFrame(None)
-    epci= pd.read_csv('/tmp/data/epci.csv', sep=',', encoding= 'utf8')
+    epci= pd.read_csv(DATADIR+'/epci.csv', sep=',', encoding= 'utf8')
     to_keep = [
         'id_mutation',
         'date_mutation',
@@ -41,8 +43,8 @@ def pipeline(ti):
     ]
     for year in range(date.today().year-5, date.today().year+1):
         df_ = pd.read_csv(
-            f'/tmp/data/full_{year}.csv', 
-            # f'/tmp/data/full_{year}.csv.gz', 
+            DATADIR+f'/full_{year}.csv', 
+            # DATADIR+'f'/full_{year}.csv.gz', 
             # compression='gzip',
             sep=',',
             encoding= 'utf8',
@@ -55,10 +57,11 @@ def pipeline(ti):
 #                nrows=500000
                     )
         df = df_[to_keep]
-        df = pd.merge(df, epci, on='code_commune')
+        ## certaines communes ne sont pas dans des EPCI
+        df = pd.merge(df, epci, on='code_commune', how='left')
         df['code_section'] = df['id_parcelle'].str[:10]
         df = df.drop('id_parcelle', axis=1)
-
+        
         natures_of_interest = ['Vente', "Vente en l'état futur d'achèvement", 'Adjudication']
         types_bien = {k: v for k,v in df_[['code_type_local', 'type_local']].value_counts().to_dict().keys()}
         del(df_)
@@ -76,19 +79,21 @@ def pipeline(ti):
         ventes['month'] = ventes['date_mutation'].swifter.progress_bar(False).apply(lambda x: int(x.split('-')[1]))
         print(len(ventes))
 
-        ## drop mutations multitypes pour les prix au m², impossible de classr une mutation qui contient X maisons et Y appartements par exemple
+        ## drop mutations multitypes pour les prix au m², impossible de classer une mutation qui contient X maisons et Y appartements par exemple
+        ## à voir pour la suite : quid des mutations avec dépendances, dont le le prix est un prix de lot ? prix_m2 = prix_lot/surface_bien ?
         multitypes = ventes[['id_mutation', 'code_type_local']].value_counts()
-        multitypes = multitypes.loc[multitypes>1].unstack()
-        mutations_drop = multitypes.loc[sum([multitypes[c].isna() for c in multitypes.columns])<len(multitypes.columns)-1].index
-        ventes_nodup = ventes.loc[~ventes['id_mutation'].isin(mutations_drop)]
+        multitypes_ = multitypes.unstack()
+        mutations_drop = multitypes_.loc[sum([multitypes_[c].isna() for c in multitypes_.columns])<len(multitypes_.columns)-1].index
+        ventes_nodup = ventes.loc[~(ventes['id_mutation'].isin(mutations_drop)) & ~(ventes['code_type_local'].isna())]
         print(len(ventes_nodup))
 
         ## group par mutation, on va chercher la surface totale de la mutation pour le prix au m²
         surfaces = ventes_nodup.groupby(['id_mutation'])['surface_reelle_bati'].sum().reset_index()
         surfaces.columns = ['id_mutation', 'surface_totale_mutation']
+        ## avec le inner merge sur surfaces on se garantit aucune ambiguïté sur les type_local
         ventes_nodup = ventes.drop_duplicates(subset = 'id_mutation')
+        ventes_nodup = pd.merge(ventes_nodup, surfaces, on='id_mutation', how='inner')
         print(len(ventes_nodup))
-        ventes_nodup = pd.merge(ventes_nodup, surfaces, on='id_mutation')
         
         ## pour une mutation donnée la valeur foncière est globale, on la divise par la surface totale, sachant qu'on n'a gardé que les mutations monotypes
         ventes_nodup['prix_m2'] = ventes_nodup['valeur_fonciere']/ventes_nodup['surface_totale_mutation']
@@ -138,7 +143,7 @@ def pipeline(ti):
             export = pd.concat([export, all_month])
         del(ventes)
         del(ventes_nodup)
-        os.remove(f'/tmp/data/full_{year}.csv')
+        os.remove(DATADIR+'f/full_{year}.csv')
         gc.collect()
         print("Done with", year)
     columns_for_sql = [c for c in export.columns if any([pref in c for pref in ['nb_', 'moy_', 'med_']])]
@@ -153,7 +158,7 @@ def pipeline(ti):
     PRIMARY KEY (echelle_geo, code_geo, annee_mois));
     """
     ti.xcom_push(key='query', value=query)
-    export.to_csv('/tmp/data/stats_dvf.csv', sep=',', encoding='utf8', index=False)
+    export.to_csv(DATADIR+'/stats_dvf.csv', sep=',', encoding='utf8', index=False)
 
 credentials = {
     'host': "host.docker.internal",
@@ -179,7 +184,7 @@ def upload():
     conn = psycopg2.connect(**credentials)
     cur = conn.cursor()
     conn.autocommit = True
-    send_csv_to_psql(conn,'/tmp/data/stats_dvf.csv','stats_dvf')
+    send_csv_to_psql(conn, DATADIR+'/stats_dvf.csv', 'stats_dvf')
 
 ################################################################################
 
@@ -199,7 +204,7 @@ with DAG(
 ) as dag:
     task1 = BashOperator(
         task_id='download_dvf',
-        bash_command="sh /opt/airflow/dags/dag_dvf/script_dl_dvf.sh "
+        bash_command="sh /opt/airflow/dags/DVF/DAGs/script_dl_dvf.sh "
     )
 
     task2 = PythonOperator(
@@ -241,4 +246,4 @@ with DAG(
         python_callable=upload,
     )
 
-    [task1, task2] >> task3 >> task4 >> task5
+    task1 >> task2 >> task3 >> task4 >> task5
