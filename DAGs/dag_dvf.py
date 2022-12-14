@@ -28,7 +28,7 @@ def get_epci():
 
 def pipeline(ti):
     export = pd.DataFrame(None)
-    epci= pd.read_csv(DATADIR+'/epci.csv', sep=',', encoding= 'utf8')
+    epci= pd.read_csv(DATADIR+'/epci.csv', sep=',', encoding= 'utf8', dtype=str)
     to_keep = [
         'id_mutation',
         'date_mutation',
@@ -143,7 +143,7 @@ def pipeline(ti):
             export = pd.concat([export, all_month])
         del(ventes)
         del(ventes_nodup)
-        os.remove(DATADIR+'f/full_{year}.csv')
+        #os.remove(DATADIR+f'/full_{year}.csv')
         gc.collect()
         print("Done with", year)
     columns_for_sql = [c for c in export.columns if any([pref in c for pref in ['nb_', 'moy_', 'med_']])]
@@ -162,9 +162,9 @@ def pipeline(ti):
 
 credentials = {
     'host': "host.docker.internal",
-    'database': "postgres",
+    'database': "dvf_202206",
     'user': "postgres",
-    'password': "mot2passe",
+    'password': "",
     'port': '5432'
 }
 
