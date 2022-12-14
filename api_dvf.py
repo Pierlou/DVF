@@ -15,6 +15,8 @@ host = config['host'][0]
 db = config['db'][0]
 port = config['port'][0]
 
+start_date = "2021-06"
+
 # engine = create_engine(f'postgresql://{id}:{pwd}@{host}/{db}')
 
 conn = psycopg2.connect(
@@ -23,6 +25,53 @@ conn = psycopg2.connect(
     user=id,
     password=pwd,
     port=port)
+
+
+def process_main_kpis(echelle_geo, code = None):
+    with conn as connexion:
+        sql = f"""
+            SELECT
+                code_geo,
+                (SUM(tot) / SUM(nb)) as prix_m2 
+            FROM 
+                (
+                    SELECT 
+                        (moy_prix_m2_maison * nb_ventes_maison + moy_prix_m2_appartement * nb_ventes_appartement) as tot,
+                        (nb_ventes_maison + nb_ventes_appartement) as nb,
+                        annee_mois,
+                        code_geo
+                    FROM stats_dvf 
+                    WHERE 
+                        echelle_geo='{echelle_geo}'
+                    AND 
+                        annee_mois > '{start_date}'
+        """
+
+        if echelle_geo == "commune":
+            sql += f" AND SUBSTRING(code_geo, 1, 2) = '{code}'"
+
+        if echelle_geo == "section":
+            sql += f" AND SUBSTRING(code_geo, 1, 5) = '{code}'"
+
+        sql += """
+                ) tbl1
+            GROUP BY code_geo;
+        """
+
+        with connexion.cursor() as cursor:
+            cursor.execute(sql)
+            columns = [desc[0] for desc in cursor.description]
+            data=cursor.fetchall()
+    return jsonify({"data": [{k:v for k,v in zip(columns, d)} for d in data]})
+
+def process_geo(echelle_geo, code):
+    with conn as connexion:
+        sql = f"SELECT * FROM stats_dvf WHERE echelle_geo='{echelle_geo}' AND code_geo = '{code}'"
+        with connexion.cursor() as cursor:
+            cursor.execute(sql)
+            columns = [desc[0] for desc in cursor.description]
+            data=cursor.fetchall()
+    return jsonify({"data": [{k:v for k,v in zip(columns, d)} for d in data]})
 
 
 @app.route("/")
@@ -38,51 +87,51 @@ def get_nation():
             columns = [desc[0] for desc in cursor.description]
             data=cursor.fetchall()
     return jsonify({"data": [{k:v for k,v in zip(columns, d)} for d in data]})
-    
-    ## version avec sqlalchemy et pandas
-    # mutations = pd.read_sql("""SELECT * FROM stats_dvf WHERE echelle_geo='nation'""", engine)
-    # dict_mutations = {'data': json.loads(mutations.to_json(orient = 'records'))}
-    # return jsonify(dict_mutations)
 
 
 @app.route('/departement')
-def get_departement():
-    with conn as connexion:
-        with connexion.cursor() as cursor:
-            cursor.execute("""SELECT * FROM stats_dvf WHERE echelle_geo='departement'""")
-            columns = [desc[0] for desc in cursor.description]
-            data=cursor.fetchall()
-    return jsonify({"data": [{k:v for k,v in zip(columns, d)} for d in data]})
+@app.route('/departement/<code>')
+def get_departement(code = None):
+    if code:
+       return process_geo("departement", code)
+    else:
+       return process_main_kpis("departement")
 
 
 @app.route('/epci')
-def get_epci():
-    with conn as connexion:
-        with connexion.cursor() as cursor:
-            cursor.execute("""SELECT * FROM stats_dvf WHERE echelle_geo='epci'""")
-            columns = [desc[0] for desc in cursor.description]
-            data=cursor.fetchall()
-    return jsonify({"data": [{k:v for k,v in zip(columns, d)} for d in data]})
+@app.route('/epci/<code>')
+def get_epci(code = None):
+    if code:
+        return process_geo("epci", code)
+    else:
+       return process_main_kpis("epci")
 
 
 @app.route('/commune')
-def get_commune():
-    with conn as connexion:
-        with connexion.cursor() as cursor:
-            cursor.execute("""SELECT * FROM stats_dvf WHERE echelle_geo='commune'""")
-            columns = [desc[0] for desc in cursor.description]
-            data=cursor.fetchall()
-    return jsonify({"data": [{k:v for k,v in zip(columns, d)} for d in data]})
+@app.route('/commune/<code>')
+def get_commune(code = None):
+    if code:
+        return process_geo("commune", code)
+    else:
+        return jsonify({"message": "Veuillez rentrer un numéro de commune."})
+
+
+@app.route('/departement/<code>/communes')
+def get_commune_from_dep(code = None):
+    return process_main_kpis("commune", code)
+
+@app.route('/commune/<code>/sections')
+def get_section_from_commune(code = None):
+    return process_main_kpis("section", code)
 
 
 @app.route('/section')
-def get_section():
-    with conn as connexion:
-        with connexion.cursor() as cursor:
-            cursor.execute("""SELECT * FROM stats_dvf WHERE echelle_geo='section'""")
-            columns = [desc[0] for desc in cursor.description]
-            data=cursor.fetchall()
-    return jsonify({"data": [{k:v for k,v in zip(columns, d)} for d in data]})
+@app.route('/section/<code>')
+def get_section(code = None):
+    if code:
+        return process_geo("section", code)
+    else:
+        return jsonify({"message": "Veuillez rentrer un numéro de section."})
 
 
 @app.route('/geo')
@@ -119,36 +168,5 @@ def get_echelle(echelle_geo= None, code_geo=None, dateminimum=None, datemaximum=
     return jsonify({"data": [{k:v for k,v in zip(columns, d)} for d in data]})
     
 
-# @app.route('/geo/<echelle_geo>')
-# @app.route('/geo/<echelle_geo>/<code_geo>')
-# def get_echelle(echelle_geo, code_geo=None):
-#     if code_geo is None:
-#         mutations = pd.read_sql(f"""
-#         SELECT * FROM stats_dvf 
-#         WHERE echelle_geo='{escape(echelle_geo)}'""",
-#             engine)
-#         dict_mutations = {'data': json.loads(mutations.to_json(orient = 'records'))}
-#         return jsonify(dict_mutations)
-#     else:
-#         mutations = pd.read_sql(f"""
-#         SELECT * FROM stats_dvf WHERE
-#         echelle_geo='{escape(echelle_geo)}' AND
-#         code_geo='{escape(code_geo)}'
-#         """,
-#             engine)
-#         dict_mutations = {'data': json.loads(mutations.to_json(orient = 'records'))}
-#         return jsonify(dict_mutations)
-
-
-# @app.route('/geo/<echelle_geo>&<code_geo>&from=<dateminimum>&to=<datemaximum>')
-# def get_echelle_code_mois(echelle_geo, code_geo, dateminimum, datemaximum):
-#     mutations = pd.read_sql(f"""
-#     SELECT * FROM stats_dvf WHERE 
-#     echelle_geo='{escape(echelle_geo)}' AND
-#     code_geo='{escape(code_geo)}' AND
-#     annee_mois>='{escape(dateminimum)}' AND
-#     annee_mois<='{escape(datemaximum)}'
-#     """,
-#         engine)
-#     dict_mutations = {'data': json.loads(mutations.to_json(orient = 'records'))}
-#     return jsonify(dict_mutations)
+if __name__ == '__main__':
+	app.run(host='0.0.0.0', port=3030)
