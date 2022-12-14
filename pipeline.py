@@ -4,9 +4,10 @@ import os
 import time
 from unidecode import unidecode
 import swifter
+from datetime import date
 
 export = pd.DataFrame(None)
-for year in [2017, 2018, 2019, 2020, 2021, 2022]:
+for year in [date.today().year-5, date.today().year+1]:
     df_ = pd.read_csv(f'full_{year}.csv', sep=',', encoding= 'utf8',
                      dtype={"code_commune" : str,
                             "code_postal" : str,
@@ -16,6 +17,7 @@ for year in [2017, 2018, 2019, 2020, 2021, 2022]:
                             "nature_culture_speciale" : str,},
     #                nrows=500000
                    )
+    epci= pd.read_csv('epci.csv', sep=',', encoding= 'utf8', dtype=str)
     to_keep = [
         'id_mutation',
         'date_mutation',
@@ -29,6 +31,7 @@ for year in [2017, 2018, 2019, 2020, 2021, 2022]:
         'surface_reelle_bati'
     ]
     df = df_[to_keep]
+    df = pd.merge(df, epci, on='code_commune', how='left')
     df['code_section'] = df['id_parcelle'].str[:10]
     df = df.drop('id_parcelle', axis=1)
 
@@ -69,7 +72,7 @@ for year in [2017, 2018, 2019, 2020, 2021, 2022]:
     ventes_nodup = ventes_nodup.dropna(subset=['prix_m2'])
 
     types_of_interest = [1, 2, 4]
-    echelles_of_interest = ['departement', 'commune', 'section']
+    echelles_of_interest = ['departement', 'epci', 'commune', 'section']
     
     for m in range(1, 13):
         dfs_dict= {}
