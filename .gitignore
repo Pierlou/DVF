@@ -1,2 +1,4 @@
 data/
 .env
+config.py
+config.csv
