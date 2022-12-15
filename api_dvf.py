@@ -5,15 +5,15 @@ from markupsafe import escape
 import psycopg2
 import pandas as pd
 from datetime import date
+import config
 
 app = Flask(__name__)
 
-config = pd.read_csv('config.csv', sep=',', dtype=str)
-id = config['id'][0]
-pwd = config['pwd'][0]
-host = config['host'][0]
-db = config['db'][0]
-port = config['port'][0]
+id = config.PG_ID
+pwd = config.PG_PWD
+host = config.PG_HOST
+db = config.PG_DB
+port = config.PG_PORT
 
 start_year = date.today().year - 1
 start_month = '01' if date.today().month <= 6 else '06'
@@ -63,6 +63,7 @@ def create_moy_rolling_year(echelle_geo, code = None):
             columns = [desc[0] for desc in cursor.description]
             data=cursor.fetchall()
     return jsonify({"data": [{k:v for k,v in zip(columns, d)} for d in data]})
+
 
 def process_geo(echelle_geo, code):
     with conn as connexion:
@@ -116,15 +117,6 @@ def get_commune(code = None):
         return jsonify({"message": "Veuillez rentrer un numéro de commune."})
 
 
-@app.route('/departement/<code>/communes')
-def get_commune_from_dep(code = None):
-    return create_moy_rolling_year("commune", code)
-
-@app.route('/commune/<code>/sections')
-def get_section_from_commune(code = None):
-    return create_moy_rolling_year("section", code)
-
-
 @app.route('/section')
 @app.route('/section/<code>')
 def get_section(code = None):
@@ -132,6 +124,16 @@ def get_section(code = None):
         return process_geo("section", code)
     else:
         return jsonify({"message": "Veuillez rentrer un numéro de section."})
+
+
+@app.route('/departement/<code>/communes')
+def get_commune_from_dep(code = None):
+    return create_moy_rolling_year("commune", code)
+
+
+@app.route('/commune/<code>/sections')
+def get_section_from_commune(code = None):
+    return create_moy_rolling_year("section", code)
 
 
 @app.route('/geo')

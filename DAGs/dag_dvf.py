@@ -15,9 +15,9 @@ import gc
 import psycopg2
 from bs4 import BeautifulSoup
 import requests
-from ast import literal_eval
+import DVF.config as config
 
-DATADIR="/tmp/data"
+DATADIR= config.DATADIR
 
 def get_epci():
     page = requests.get('https://unpkg.com/@etalab/decoupage-administratif/data/epci.json')
@@ -152,8 +152,8 @@ def pipeline(ti):
     DROP TABLE IF EXISTS stats_dvf CASCADE;
     CREATE UNLOGGED TABLE stats_dvf (
     code_geo VARCHAR(50),
-    {rows}
     echelle_geo VARCHAR(15),
+    {rows}
     annee_mois VARCHAR(7),
     PRIMARY KEY (echelle_geo, code_geo, annee_mois));
     """
@@ -161,11 +161,11 @@ def pipeline(ti):
     export.to_csv(DATADIR+'/stats_dvf.csv', sep=',', encoding='utf8', index=False)
 
 credentials = {
-    'host': "host.docker.internal",
-    'database': "dvf_202206",
-    'user': "postgres",
-    'password': "",
-    'port': '5432'
+    'user' : config.PG_ID,
+    'password' : config.PG_PWD,
+    'host' : config.DOCKER_HOST,
+    'database' : config.PG_DB,
+    'port' : config.PG_PORT,
 }
 
 def send_csv_to_psql(connection, csv, table_):
