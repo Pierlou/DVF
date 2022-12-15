@@ -13,11 +13,11 @@ from unidecode import unidecode
 import swifter
 import gc
 import psycopg2
-from bs4 import BeautifulSoup
 import requests
 import DVF.config as config
 
 DATADIR= config.DATADIR
+QUERY_FILE = config.QUERY_FILE
 
 def get_epci():
     page = requests.get('https://unpkg.com/@etalab/decoupage-administratif/data/epci.json')
@@ -65,7 +65,7 @@ def pipeline(ti):
         natures_of_interest = ['Vente', "Vente en l'état futur d'achèvement", 'Adjudication']
         types_bien = {k: v for k,v in df_[['code_type_local', 'type_local']].value_counts().to_dict().keys()}
         del(df_)
-
+        
         # types_bien = {
         #     1: "Maison",
         #     2: "Appartement",
@@ -149,15 +149,21 @@ def pipeline(ti):
     columns_for_sql = [c for c in export.columns if any([pref in c for pref in ['nb_', 'moy_', 'med_']])]
     rows = ' FLOAT,\n'.join(columns_for_sql) +  ' FLOAT,'
     query = f"""
-    DROP TABLE IF EXISTS stats_dvf CASCADE;
-    CREATE UNLOGGED TABLE stats_dvf (
-    code_geo VARCHAR(50),
-    echelle_geo VARCHAR(15),
-    {rows}
-    annee_mois VARCHAR(7),
-    PRIMARY KEY (echelle_geo, code_geo, annee_mois));
+DROP TABLE IF EXISTS stats_dvf CASCADE;
+CREATE UNLOGGED TABLE stats_dvf (
+code_geo VARCHAR(50),
+echelle_geo VARCHAR(15),
+{rows}
+annee_mois VARCHAR(7),
+PRIMARY KEY (echelle_geo, code_geo, annee_mois));
     """
-    ti.xcom_push(key='query', value=query)
+    ## attempt with xcoms unsuccessful
+    # ti.xcom_push(key='query', value=query)
+
+    ## saving the custom query in a text file
+    with open(DATADIR+'/'+QUERY_FILE, 'w') as f:
+        f.write(query)
+        f.close()
     export.to_csv(DATADIR+'/stats_dvf.csv', sep=',', encoding='utf8', index=False)
 
 credentials = {
@@ -217,29 +223,14 @@ with DAG(
         python_callable=pipeline,
     )
 
-    task4 = PostgresOperator(
-    task_id='create_table',
-    postgres_conn_id='postgres_localhost',
-    ## à changer dans l'idéal pour adapter les colonnes selon les paramètres dans la process_dvf, mais actuellement pas de solution
-    # sql="""(%s, '{{ ti.xcom_pull(task_ids= 'process_dvf', key='query') }}', %s)"""
-    sql="""
-        DROP TABLE IF EXISTS stats_dvf CASCADE;
-        CREATE UNLOGGED TABLE stats_dvf (
-        code_geo VARCHAR(50),
-        echelle_geo VARCHAR(15),
-        nb_ventes_maison FLOAT,
-        moy_prix_m2_maison FLOAT,
-        med_prix_m2_maison FLOAT,
-        nb_ventes_appartement FLOAT,
-        moy_prix_m2_appartement FLOAT,
-        med_prix_m2_appartement FLOAT,
-        nb_ventes_local FLOAT,
-        moy_prix_m2_local FLOAT,
-        med_prix_m2_local FLOAT,
-        annee_mois VARCHAR(7),
-        PRIMARY KEY (echelle_geo, code_geo, annee_mois));
-        """ 
-    )
+    with open(DATADIR+'/'+QUERY_FILE, 'r') as f:
+        task4 = PostgresOperator(
+            task_id='create_table',
+            postgres_conn_id='postgres_localhost',
+            ## potentiellement mieux d'utiliser xcom pour passer l'nfo, mais ne fonctionne pas actuellement
+            # sql="""(%s, '{{ ti.xcom_pull(task_ids= 'process_dvf', key='query') }}', %s)"""
+            sql=''.join(f.readlines()),
+        )
 
     task5 = PythonOperator(
         task_id='upload_table',
