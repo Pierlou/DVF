@@ -3,8 +3,8 @@ import json
 from unidecode import unidecode
 from markupsafe import escape
 import psycopg2
-# from sqlalchemy import create_engine
 import pandas as pd
+from datetime import date
 
 app = Flask(__name__)
 
@@ -15,9 +15,9 @@ host = config['host'][0]
 db = config['db'][0]
 port = config['port'][0]
 
-start_date = "2021-06"
-
-# engine = create_engine(f'postgresql://{id}:{pwd}@{host}/{db}')
+start_year = date.today().year - 1
+start_month = '01' if date.today().month <= 6 else '06'
+start_date = str(start_year) + "-" + start_month
 
 conn = psycopg2.connect(
     host=host,
@@ -27,17 +27,17 @@ conn = psycopg2.connect(
     port=port)
 
 
-def process_main_kpis(echelle_geo, code = None):
+def create_moy_rolling_year(echelle_geo, code = None):
     with conn as connexion:
         sql = f"""
             SELECT
                 code_geo,
-                (SUM(tot) / SUM(nb)) as prix_m2 
+                ROUND(SUM(tot) / NULLIF(SUM(nb), 0)) as prix_m2 
             FROM 
                 (
                     SELECT 
-                        (moy_prix_m2_maison * nb_ventes_maison + moy_prix_m2_appartement * nb_ventes_appartement) as tot,
-                        (nb_ventes_maison + nb_ventes_appartement) as nb,
+                        (COALESCE(moy_prix_m2_maison * nb_ventes_maison, 0) + COALESCE(moy_prix_m2_appartement * nb_ventes_appartement, 0)) as tot,
+                        COALESCE(nb_ventes_maison, 0) + COALESCE(nb_ventes_appartement, 0) as nb,
                         annee_mois,
                         code_geo
                     FROM stats_dvf 
@@ -95,7 +95,7 @@ def get_departement(code = None):
     if code:
        return process_geo("departement", code)
     else:
-       return process_main_kpis("departement")
+       return create_moy_rolling_year("departement")
 
 
 @app.route('/epci')
@@ -104,7 +104,7 @@ def get_epci(code = None):
     if code:
         return process_geo("epci", code)
     else:
-       return process_main_kpis("epci")
+       return create_moy_rolling_year("epci")
 
 
 @app.route('/commune')
@@ -118,11 +118,11 @@ def get_commune(code = None):
 
 @app.route('/departement/<code>/communes')
 def get_commune_from_dep(code = None):
-    return process_main_kpis("commune", code)
+    return create_moy_rolling_year("commune", code)
 
 @app.route('/commune/<code>/sections')
 def get_section_from_commune(code = None):
-    return process_main_kpis("section", code)
+    return create_moy_rolling_year("section", code)
 
 
 @app.route('/section')
@@ -169,4 +169,4 @@ def get_echelle(echelle_geo= None, code_geo=None, dateminimum=None, datemaximum=
     
 
 if __name__ == '__main__':
-	app.run(host='0.0.0.0', port=3030)
+	app.run(host='0.0.0.0', port=3030, debug=True)
