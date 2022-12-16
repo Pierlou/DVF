@@ -22,7 +22,9 @@ QUERY_FILE = config.QUERY_FILE
 def get_epci():
     page = requests.get('https://unpkg.com/@etalab/decoupage-administratif/data/epci.json')
     epci = page.json()
-    data = {e['nom']: [m['code'] for m in e['membres']] for e in epci}
+    ## ajout du numéro de département dans le nom de l'EPCI pour les traitements suivants
+    ## certaines EPCI sont à cheval sur plusieurs départements : pas géré
+    data = {e['nom'] + ' ' + e['membres'][0]['code'][:2]: [m['code'] for m in e['membres']] for e in epci}
     epci_list = [[k, m]for k in list(data.keys()) for m in data[k]]
     pd.DataFrame(epci_list, columns=['code_epci', 'code_commune']).to_csv(DATADIR+'/epci.csv', sep=',', encoding='utf8', index=False)
 
@@ -153,7 +155,7 @@ def pipeline(ti):
     query = f"""
 DROP TABLE IF EXISTS stats_dvf CASCADE;
 CREATE UNLOGGED TABLE stats_dvf (
-code_geo VARCHAR(50),
+code_geo VARCHAR(100),
 echelle_geo VARCHAR(15),
 {rows}
 annee_mois VARCHAR(7),

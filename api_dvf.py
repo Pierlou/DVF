@@ -47,6 +47,9 @@ def create_moy_rolling_year(echelle_geo, code = None):
                         annee_mois > '{start_date}'
         """
 
+        if echelle_geo == "epci":
+            sql += f" AND SUBSTRING(code_geo, CHAR_LENGTH(code_geo) - 1, CHAR_LENGTH(code_geo)) = '{code}'"
+
         if echelle_geo == "commune":
             sql += f" AND SUBSTRING(code_geo, 1, 2) = '{code}'"
 
@@ -57,7 +60,7 @@ def create_moy_rolling_year(echelle_geo, code = None):
                 ) tbl1
             GROUP BY code_geo;
         """
-
+        print(sql)
         with connexion.cursor() as cursor:
             cursor.execute(sql)
             columns = [desc[0] for desc in cursor.description]
@@ -114,7 +117,7 @@ def get_commune(code = None):
     if code:
         return process_geo("commune", code)
     else:
-        return jsonify({"message": "Veuillez rentrer un numéro de commune."})
+        return jsonify({"message": "Veuillez rentrer un numero de commune."})
 
 
 @app.route('/section')
@@ -123,12 +126,12 @@ def get_section(code = None):
     if code:
         return process_geo("section", code)
     else:
-        return jsonify({"message": "Veuillez rentrer un numéro de section."})
+        return jsonify({"message": "Veuillez rentrer un numero de section."})
 
 
-@app.route('/nation/<code>/departements')
-def get_dep_from_nation(code = None):
-    return create_moy_rolling_year("departement", code)
+@app.route('/departement/<code>/epci')
+def get_epci_from_dep(code = None):
+    return create_moy_rolling_year("epci", code)
 
 
 @app.route('/departement/<code>/communes')
