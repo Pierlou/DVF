@@ -22,7 +22,7 @@ QUERY_FILE = config.QUERY_FILE
 def get_epci():
     page = requests.get('https://unpkg.com/@etalab/decoupage-administratif/data/epci.json')
     epci = page.json()
-    data = {e['code']: [m['code'] for m in e['membres']] for e in epci}
+    data = {e['nom']: [m['code'] for m in e['membres']] for e in epci}
     epci_list = [[k, m]for k in list(data.keys()) for m in data[k]]
     pd.DataFrame(epci_list, columns=['code_epci', 'code_commune']).to_csv(DATADIR+'/epci.csv', sep=',', encoding='utf8', index=False)
 
