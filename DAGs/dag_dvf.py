@@ -71,10 +71,12 @@ def pipeline(ti):
         #     2: "Appartement",
         #     3: "Dépendance",
         #     4: "Local industriel. commercial ou assimilé",
+        #     NaN: terres (cf nature_culture)
         # }
 
-        ## filtres
-        ventes = df.loc[df['nature_mutation'].isin(natures_of_interest)]
+        ## filtres sur les ventes et les types de biens à considérer
+        ## choix : les terres et/ou dépendances ne rendent pas une mutation multitype
+        ventes = df.loc[(df['nature_mutation'].isin(natures_of_interest)) & (df['code_type_local'].isin([1,2,4]))]
         del(df)
         ventes['month'] = ventes['date_mutation'].swifter.progress_bar(False).apply(lambda x: int(x.split('-')[1]))
         print(len(ventes))

@@ -7,7 +7,7 @@ import swifter
 from datetime import date
 
 export = pd.DataFrame(None)
-for year in [date.today().year-5, date.today().year+1]:
+for year in range(date.today().year-5, date.today().year+1):
     df_ = pd.read_csv(f'full_{year}.csv', sep=',', encoding= 'utf8',
                      dtype={"code_commune" : str,
                             "code_postal" : str,
@@ -43,10 +43,12 @@ for year in [date.today().year-5, date.today().year+1]:
     #     2: "Appartement",
     #     3: "Dépendance",
     #     4: "Local industriel. commercial ou assimilé",
+    #     NaN: terres (cf nature_culture)
     # }
 
-    ## filtres
-    ventes = df.loc[df['nature_mutation'].isin(natures_of_interest)]
+    ## filtres sur les ventes et les types de biens à considérer
+    ## choix : les terres et/ou dépendances ne rendent pas une mutation multitype
+    ventes = df.loc[(df['nature_mutation'].isin(natures_of_interest)) & (df['code_type_local'].isin([1,2,4]))]
     ventes['month'] = ventes['date_mutation'].swifter.apply(lambda x: int(x.split('-')[1]))
     print(len(ventes))
 
@@ -67,7 +69,7 @@ for year in [date.today().year-5, date.today().year+1]:
     ## pour une mutation donnée la valeur foncière est globale, on la divise par la surface totale, sachant qu'on n'a gardé que les mutations monotypes
     ventes_nodup['prix_m2'] = ventes_nodup['valeur_fonciere']/ventes_nodup['surface_totale_mutation']
     ventes_nodup['prix_m2'] = ventes_nodup['prix_m2'].replace([np.inf, -np.inf], np.nan)
-
+    
     ## pas de prix ou pas de surface
     ventes_nodup = ventes_nodup.dropna(subset=['prix_m2'])
 

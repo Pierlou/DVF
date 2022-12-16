@@ -7,7 +7,12 @@ Le fichier pipeline.py permet de générer des statistiques à partir des [donn�
 * moyenne des prix au m²
 * médiane des prix au m²
 
-pour chaque type de bien sélectionné (parmi : maisons, appartements, locaux, dépendances). Pour plus de cohérence, les mutations "multitypes" sont retirées pour le calcul des prix au m², mais conservées pour le dénombrement.
+pour chaque type de bien sélectionné (parmi : maisons, appartements, locaux, dépendances). Lorsqu'une mutation comporte plusieurs types de biens (par exemple un appartement et une maison), il est impossible d'évaluer précisément le poids de chaque bien dans le prix total de la mutation. Toutes ces mutations dites "multitypes" sont donc écartées pour le calcul des prix au m², mais elles restent comptabilisées pour leur dénombrement. Le choix a été fait de ne pas considérer les terres ni les dépendances comme des types de biens à part entière pour qualifier les mutations de multitypes ou non. En conséquence, une mutation qui comporte, par exemple, trois appartements et deux dépendances, est considérée comme monotype, et le prix au m² est calculé comme suit :
+
+$$prix\ m² de\ la\ mutation = \frac{prix\ total\ mutation}{\sum{surfaces\ des\ biens\ de\ la\ mutation}}$$
+_NB : les surfaces des terres et dépendances ne sont comptabilisées dans le calcul du prix au m²._
+
+Cela affecte les prix calculés dans la mesure où, par exemple, une maison avec ou sans garage est considérée comme le même type de mutation, mais permet de garder une quantité bien supérieure de mutations pour les calculs, donc une plus grande précision. Ce choix d'exclure les mutations multitypes conduit également à des cas où, pour une échelle et un mois donné, il peut y avoir un nombre non nul de ventes d'un certain type de bien, mais aucune information sur le prix au m² pour ce type de bien : c'est que toutes les mutations incluant ce type de bien contenait également d'autres types de biens.
 
 _NB : pour l'échelle [EPCI](https://www.collectivites-locales.gouv.fr/institutions/les-epci), il est nécessaire de télécharger également [ces données](https://www.collectivites-locales.gouv.fr/institutions/liste-et-composition-des-epci-fiscalite-propre)._
 
