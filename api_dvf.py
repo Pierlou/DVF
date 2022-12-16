@@ -126,6 +126,11 @@ def get_section(code = None):
         return jsonify({"message": "Veuillez rentrer un numéro de section."})
 
 
+@app.route('/nation/<code>/departements')
+def get_dep_from_nation(code = None):
+    return create_moy_rolling_year("departement", code)
+
+
 @app.route('/departement/<code>/communes')
 def get_commune_from_dep(code = None):
     return create_moy_rolling_year("commune", code)
