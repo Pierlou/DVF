@@ -45,20 +45,15 @@ def pipeline(ti):
     ]
     for year in range(date.today().year-5, date.today().year+1):
         df_ = pd.read_csv(
-            DATADIR+f'/full_{year}.csv', 
-            # DATADIR+'f'/full_{year}.csv.gz', 
-            # compression='gzip',
+            DATADIR+f'/full_{year}.csv',
             sep=',',
             encoding= 'utf8',
             dtype={"code_commune" : str,
-                    "code_postal" : str,
-                    "code_departement" : str,
-                    "ancien_nom_commune" : str,
-                    "code_nature_culture_speciale" : str,
-                    "nature_culture_speciale" : str,},
-#                nrows=500000
-                    )
-        df = df_[to_keep]
+                   "code_departement" : str,},
+            usecols=to_keep,
+        )
+        ## les fichiers d'entrée contiennent entre 4 et 8% de doublons purs
+        df = df_.drop_duplicates()
         ## certaines communes ne sont pas dans des EPCI
         df = pd.merge(df, epci, on='code_commune', how='left')
         df['code_section'] = df['id_parcelle'].str[:10]
