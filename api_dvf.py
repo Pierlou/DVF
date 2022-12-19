@@ -32,7 +32,7 @@ def create_moy_rolling_year(echelle_geo, code = None):
         sql = f"""
             SELECT
                 code_geo,
-                ROUND(SUM(tot) / NULLIF(SUM(nb), 0)) as prix_m2 
+                ROUND(SUM(tot) / NULLIF(SUM(nb), 0)) as moy_prix_m2 
             FROM 
                 (
                     SELECT 
@@ -47,7 +47,7 @@ def create_moy_rolling_year(echelle_geo, code = None):
                         annee_mois > '{start_date}'
         """
 
-        if echelle_geo == "epci":
+        if echelle_geo == "epci" and code is not None:
             sql += f" AND SUBSTRING(code_geo, CHAR_LENGTH(code_geo) - 1, CHAR_LENGTH(code_geo)) = '{code}'"
 
         if echelle_geo == "commune":
@@ -60,7 +60,7 @@ def create_moy_rolling_year(echelle_geo, code = None):
                 ) tbl1
             GROUP BY code_geo;
         """
-        print(sql)
+        # print(sql)
         with connexion.cursor() as cursor:
             cursor.execute(sql)
             columns = [desc[0] for desc in cursor.description]
@@ -117,6 +117,7 @@ def get_commune(code = None):
     if code:
         return process_geo("commune", code)
     else:
+        ## trop de lignes et pas de besoin de la totalité des communes : sélection uniquement par département
         return jsonify({"message": "Veuillez rentrer un numero de commune."})
 
 
@@ -126,6 +127,7 @@ def get_section(code = None):
     if code:
         return process_geo("section", code)
     else:
+        ## trop de lignes et pas de besoin de la totalité des sections : sélection uniquement par commune
         return jsonify({"message": "Veuillez rentrer un numero de section."})
 
 
