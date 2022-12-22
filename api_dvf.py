@@ -32,33 +32,31 @@ def create_moy_rolling_year(echelle_geo, code = None):
         sql = f"""
             SELECT
                 code_geo,
-                ROUND(SUM(tot) / NULLIF(SUM(nb), 0)) as moy_prix_m2 
+                code_parent,
+                libelle_geo,
+                ROUND(SUM(tot) / NULLIF(SUM(nb), 0)) as moy_prix_m2_rolling_year 
             FROM 
                 (
                     SELECT 
                         (COALESCE(moy_prix_m2_maison * nb_ventes_maison, 0) + COALESCE(moy_prix_m2_appartement * nb_ventes_appartement, 0)) as tot,
                         COALESCE(nb_ventes_maison, 0) + COALESCE(nb_ventes_appartement, 0) as nb,
                         annee_mois,
+                        code_parent,
+                        libelle_geo,
                         code_geo
                     FROM stats_dvf 
                     WHERE 
                         echelle_geo='{echelle_geo}'
                     AND 
-                        annee_mois > '{start_date}'
+                        annee_mois > '{start_date}'                        
         """
 
-        if echelle_geo == "epci" and code is not None:
-            sql += f" AND SUBSTRING(code_geo, CHAR_LENGTH(code_geo) - 1, CHAR_LENGTH(code_geo)) = '{code}'"
-
-        if echelle_geo == "commune":
-            sql += f" AND SUBSTRING(code_geo, 1, 2) = '{code}'"
-
-        if echelle_geo == "section":
-            sql += f" AND SUBSTRING(code_geo, 1, 5) = '{code}'"
+        if (echelle_geo in ['departement', 'epci'] and code is not None) or echelle_geo in ['commune', 'section']:
+            sql += f"AND code_parent='{code}'"
 
         sql += """
                 ) tbl1
-            GROUP BY code_geo;
+            GROUP BY code_geo, code_parent, libelle_geo;
         """
         # print(sql)
         with connexion.cursor() as cursor:
@@ -136,7 +134,7 @@ def get_epci_from_dep(code = None):
     return create_moy_rolling_year("epci", code)
 
 
-@app.route('/departement/<code>/communes')
+@app.route('/epci/<code>/communes')
 def get_commune_from_dep(code = None):
     return create_moy_rolling_year("commune", code)
 

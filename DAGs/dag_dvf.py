@@ -22,11 +22,13 @@ QUERY_FILE = config.QUERY_FILE
 def get_epci():
     page = requests.get('https://unpkg.com/@etalab/decoupage-administratif/data/epci.json')
     epci = page.json()
-    ## ajout du numéro de département dans le nom de l'EPCI pour les traitements suivants
-    ## certaines EPCI sont à cheval sur plusieurs départements : pas géré
-    data = {e['nom'] + ' ' + e['membres'][0]['code'][:2]: [m['code'] for m in e['membres']] for e in epci}
-    epci_list = [[k, m]for k in list(data.keys()) for m in data[k]]
-    pd.DataFrame(epci_list, columns=['code_epci', 'code_commune']).to_csv(DATADIR+'/epci.csv', sep=',', encoding='utf8', index=False)
+    data = [{
+        'code_epci': e['code'],
+        'libelle_geo' : unidecode(e['nom']),
+        'liste_membres' : [m['code'] for m in e['membres']]
+    }  for e in epci]
+    epci_list = [[commune, d['code_epci'], d['libelle_geo']] for d in data for commune in d['liste_membres']]
+    pd.DataFrame(epci_list, columns=['code_commune', 'code_epci', 'libelle_geo']).to_csv(DATADIR+'/epci.csv', sep=',', encoding='utf8', index=False)
 
 def pipeline(ti):
     export = pd.DataFrame(None)
@@ -113,11 +115,12 @@ def pipeline(ti):
                 nb_.columns = ['nb_ventes_'+unidecode(c.split(' ')[0].lower()) if c != f'code_{echelle}' else c for c in nb_.columns]
                 
                 ## pour mean et median on utlise le df nodup, dans lequel on a drop_dup sur les mutations
-                mean = ventes_nodup.loc[ventes_nodup['code_type_local'].isin(types_of_interest)].groupby([f'code_{echelle}', 'month', 'type_local'])['prix_m2'].mean()
+                grouped = ventes_nodup.loc[ventes_nodup['code_type_local'].isin(types_of_interest)].groupby([f'code_{echelle}', 'month', 'type_local'])['prix_m2']
+                mean = grouped.mean()
                 mean_ = mean.loc[mean.index.get_level_values(1)==m].unstack().reset_index().drop('month', axis=1)
                 mean_.columns = ['moy_prix_m2_'+unidecode(c.split(' ')[0].lower()) if c != f'code_{echelle}' else c for c in mean_.columns]
 
-                median = ventes_nodup.loc[ventes_nodup['code_type_local'].isin(types_of_interest)].groupby([f'code_{echelle}', 'month', 'type_local'])['prix_m2'].median()
+                median = grouped.median()
                 median_ = median.loc[median.index.get_level_values(1)==m].unstack().reset_index().drop('month', axis=1)
                 median_.columns = ['med_prix_m2_'+unidecode(c.split(' ')[0].lower()) if c != f'code_{echelle}' else c for c in median_.columns]
 
@@ -142,7 +145,6 @@ def pipeline(ti):
             export = pd.concat([export, all_month])
         del(ventes)
         del(ventes_nodup)
-        #os.remove(DATADIR+f'/full_{year}.csv')
         gc.collect()
         print("Done with", year)
     columns_for_sql = [c for c in export.columns if any([pref in c for pref in ['nb_', 'moy_', 'med_']])]
@@ -150,11 +152,13 @@ def pipeline(ti):
     query = f"""
 DROP TABLE IF EXISTS stats_dvf CASCADE;
 CREATE UNLOGGED TABLE stats_dvf (
-code_geo VARCHAR(100),
+code_geo VARCHAR(20),
 echelle_geo VARCHAR(15),
 {rows}
 annee_mois VARCHAR(7),
-PRIMARY KEY (echelle_geo, code_geo, annee_mois));
+libelle_geo VARCHAR(100),
+code_parent VARCHAR(10),
+PRIMARY KEY (echelle_geo, code_geo, annee_mois, code_parent));
     """
     ## attempt with xcoms unsuccessful
     # ti.xcom_push(key='query', value=query)
@@ -163,7 +167,32 @@ PRIMARY KEY (echelle_geo, code_geo, annee_mois));
     with open(DATADIR+'/'+QUERY_FILE, 'w') as f:
         f.write(query)
         f.close()
-    export.to_csv(DATADIR+'/stats_dvf.csv', sep=',', encoding='utf8', index=False)
+
+    ## on ajoute les colonnes libelle_geo et code_parent
+    departements = pd.read_csv(DATADIR+'/departements.csv', dtype=str, usecols=['DEP', 'LIBELLE'])
+    departements = departements.rename({'DEP':'code_geo', 'LIBELLE': 'libelle_geo'}, axis=1)
+    departements['code_parent'] = 'all'
+    epci_communes = epci[['code_commune', 'code_epci']]
+    epci['code_parent'] = epci['code_commune'].apply(lambda code: code[:2] if code[:2]!='97' else code[:3])
+    epci = epci.drop('code_commune', axis=1)
+    epci = epci.drop_duplicates(subset=['code_epci', 'code_parent']).rename({'code_epci': 'code_geo'}, axis=1)
+
+    communes = pd.read_csv(DATADIR+'/communes.csv', dtype=str, usecols=['TYPECOM', 'COM', 'LIBELLE'])
+    communes = communes.loc[communes['TYPECOM'].isin(['COM', 'ARM'])].rename({'COM':'code_geo', 'LIBELLE': 'libelle_geo'}, axis=1).drop('TYPECOM', axis=1)
+    epci_communes = epci_communes.rename({'code_commune': 'code_geo', 'code_epci': 'code_parent'}, axis=1)
+    communes = pd.merge(communes, epci_communes, on='code_geo', how='outer')
+    libelles_parents = pd.concat([departements, epci, communes])
+    libelles_parents['libelle_geo'] = libelles_parents['libelle_geo'].apply(unidecode)
+
+    export = pd.merge(export, libelles_parents, on='code_geo', how='left')
+    export.loc[export['echelle_geo']=='section', 'code_parent'] = export.loc[export['echelle_geo']=='section']['code_geo'].str.slice(0,5)
+    export.loc[export['echelle_geo']=='nation', 'code_parent'] = "-"
+    export.loc[(export['echelle_geo']=='commune') & (export['code_geo'].str.startswith('75')), 'code_parent'] = '200054781'
+    export.loc[(export['echelle_geo']=='commune') & (export['code_geo'].str.startswith('13')), 'code_parent'] = '200054807'
+    export.loc[(export['echelle_geo']=='commune') & (export['code_geo'].str.startswith('69')), 'code_parent'] = '200046977'
+    export['code_parent'] = export['code_parent'].fillna('NA')
+
+    export.to_csv(DATADIR+'/stats_dvf.csv', sep=',', encoding='utf8', index=False, float_format='%.0f')
 
 credentials = {
     'user' : config.PG_ID,
@@ -181,9 +210,9 @@ def send_csv_to_psql(connection, csv, table_):
         cur.execute("truncate " + table + ";")  #avoiding uploading duplicate data!
         cur.copy_expert(sql=sql % table, file=file)
         connection.commit()
-        # cur.close()
-        # connection.close()
-    return connection.commit()
+        cur.close()
+        connection.close()
+    # return connection.commit()
 
 def upload():
     conn = psycopg2.connect(**credentials)
