@@ -32,7 +32,7 @@ def get_epci():
     pd.DataFrame(epci_list, columns=['code_commune', 'code_epci', 'libelle_geo']).to_csv(DATADIR+'/epci.csv', sep=',', encoding='utf8', index=False)
 
 def pipeline(ti):
-    years = [int(f.replace('full_', '').replace('.csv', '')) for f in os.listdir(DATADIR) if 'full_' in f]
+    years = sorted([int(f.replace('full_', '').replace('.csv', '')) for f in os.listdir(DATADIR) if 'full_' in f])
     export = pd.DataFrame(None)
     epci= pd.read_csv(DATADIR+'/epci.csv', sep=',', encoding= 'utf8', dtype=str)
     to_keep = [
