@@ -25,3 +25,70 @@ Le répertoire DAGs contient les scripts du [DAG Airflow](https://airflow.apache
 
 ## API
 Le fichier api_dvf.py permet de setup une API Flask sur la base de données des statistiques créée par le DAG.
+Les informations retournées par endpoint de l'API sont :
+
+* la moyenne du prix au m² sur un an glissant, maisons et appartements confondus, pour les niveaux d'échelle suivants :
+    - /departement (tous les départements)
+    - /epci (toutes les EPCI, ou /departement/<code_departement>/epci pour une sélection restreinte)
+    - /epci/<code_epci>/communes (toutes les communes de l'EPCI sélectionnée)
+    - /commune/<code_commune>/sections (toutes les sections de la commune sélectionnée)
+
+Par exemple, _/epci/246300701/communes_ renvoit une liste d'éléments comme suit :
+```
+{
+    "code_geo": "63075",
+    "code_parent": "246300701",
+    "libelle_geo": "Chamalieres",
+    "moy_prix_m2_rolling_year": 2563.0
+},
+{
+    "code_geo": "63113",
+    "code_parent": "246300701",
+    "libelle_geo": "Clermont-Ferrand",
+    "moy_prix_m2_rolling_year": 2456.0
+},
+...
+```
+
+* la moyenne, la médiane et le nombre de mutations, pour chaque type de biens (maison, appartement et local), pour les mois où au moins une mutation a eu lieu, pour les niveaux d'échelle suivants :
+    - /nation
+    - /departement/<code_departement>
+    - /epci/<code_epci>
+    - /commune/<code_commune>
+
+Par exemple, _/departement/44_ renvoit une liste d'éléments comme suit :
+```
+{
+    "annee_mois": "2017-07",
+    "code_geo": "44",
+    "code_parent": "all",
+    "echelle_geo": "departement",
+    "libelle_geo": "Loire-Atlantique",
+    "med_prix_m2_appartement": 2715.0,
+    "med_prix_m2_local": 1311.0,
+    "med_prix_m2_maison": 2287.0,
+    "moy_prix_m2_appartement": 2909.0,
+    "moy_prix_m2_local": 1727.0,
+    "moy_prix_m2_maison": 2416.0,
+    "nb_ventes_appartement": 1066.0,
+    "nb_ventes_local": 184.0,
+    "nb_ventes_maison": 1651.0
+},
+{
+    "annee_mois": "2017-08",
+    "code_geo": "44",
+    "code_parent": "all",
+    "echelle_geo": "departement",
+    "libelle_geo": "Loire-Atlantique",
+    "med_prix_m2_appartement": 2632.0,
+    "med_prix_m2_local": 1113.0,
+    "med_prix_m2_maison": 2286.0,
+    "moy_prix_m2_appartement": 2793.0,
+    "moy_prix_m2_local": 1609.0,
+    "moy_prix_m2_maison": 2416.0,
+    "nb_ventes_appartement": 843.0,
+    "nb_ventes_local": 113.0,
+    "nb_ventes_maison": 1338.0
+},
+...
+```
