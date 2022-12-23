@@ -14,6 +14,7 @@ import swifter
 import gc
 import psycopg2
 import requests
+from bs4 import BeautifulSoup
 import DVF.config as config
 
 DATADIR= config.DATADIR
@@ -31,6 +32,7 @@ def get_epci():
     pd.DataFrame(epci_list, columns=['code_commune', 'code_epci', 'libelle_geo']).to_csv(DATADIR+'/epci.csv', sep=',', encoding='utf8', index=False)
 
 def pipeline(ti):
+    years = [int(f.replace('full_', '').replace('.csv', '')) for f in os.listdir(DATADIR) if 'full_' in f]
     export = pd.DataFrame(None)
     epci= pd.read_csv(DATADIR+'/epci.csv', sep=',', encoding= 'utf8', dtype=str)
     to_keep = [
@@ -45,7 +47,7 @@ def pipeline(ti):
         'valeur_fonciere',
         'surface_reelle_bati'
     ]
-    for year in range(date.today().year-5, date.today().year+1):
+    for year in years:
         df_ = pd.read_csv(
             DATADIR+f'/full_{year}.csv',
             sep=',',
