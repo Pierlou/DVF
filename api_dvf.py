@@ -85,7 +85,7 @@ def hello_world():
 def get_nation():
     with conn as connexion:
         with connexion.cursor() as cursor:
-            cursor.execute("""SELECT * FROM stats_dvf WHERE echelle_geo='nation'""")
+            cursor.execute("""SELECT * FROM stats_dvf WHERE echelle_geo='nation' AND nb_ventes_appartement>0""")
             columns = [desc[0] for desc in cursor.description]
             data=cursor.fetchall()
     return jsonify({"data": [{k:v for k,v in zip(columns, d)} for d in data]})
