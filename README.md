@@ -92,3 +92,6 @@ Par exemple, _/departement/44_ renvoit une liste d'éléments comme suit :
 },
 ...
 ```
+
+## Cohérence et statistiques
+Le notebook Jupyter inconsistencies.ipynb contient des tests et visualisations sur les données DVF brutes. Ce travail a pour but de remonter de potentielles anomalies dans les données afin d'en améliorer la qualité après retour aux services compétents.
