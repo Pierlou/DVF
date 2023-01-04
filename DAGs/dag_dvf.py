@@ -4,6 +4,7 @@ from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 from airflow.providers.postgres.operators.postgres import PostgresOperator
+from airflow.hooks.postgres_hook import PostgresHook
 
 import numpy as np
 import pandas as pd
@@ -196,14 +197,6 @@ PRIMARY KEY (echelle_geo, code_geo, annee_mois, code_parent));
 
     export.to_csv(DATADIR+'/stats_dvf.csv', sep=',', encoding='utf8', index=False, float_format='%.0f')
 
-credentials = {
-    'user' : config.PG_ID,
-    'password' : config.PG_PWD,
-    'host' : config.DOCKER_HOST,
-    'database' : config.PG_DB,
-    'port' : config.PG_PORT,
-}
-
 def send_csv_to_psql(connection, csv, table_):
     sql = "COPY %s FROM STDIN WITH CSV HEADER DELIMITER AS ','"
     file = open(csv, "r")
@@ -217,7 +210,8 @@ def send_csv_to_psql(connection, csv, table_):
     # return connection.commit()
 
 def upload():
-    conn = psycopg2.connect(**credentials)
+    hook = PostgresHook(postgres_conn_id='postgres_localhost')
+    conn = hook.get_conn()
     cur = conn.cursor()
     conn.autocommit = True
     send_csv_to_psql(conn, DATADIR+'/stats_dvf.csv', 'stats_dvf')
