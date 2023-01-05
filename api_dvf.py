@@ -3,7 +3,6 @@ import json
 from unidecode import unidecode
 from markupsafe import escape
 import psycopg2
-import pandas as pd
 from datetime import date
 import config
 
