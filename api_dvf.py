@@ -30,35 +30,54 @@ conn = psycopg2.connect(
 
 def create_moy_rolling_year(echelle_geo, code = None):
     with conn as connexion:
-        sql = f"""
+        sql = f"""SELECT
+            tbl2.code_geo,
+            code_parent,
+            libelle_geo,
+            moy_prix_m2_rolling_year,
+            nb_mutations_apparts_maisons_rolling_year,
+            maisons + appartements + locaux as nb_mutations_all_5_ans
+        FROM (
+            SELECT
+                code_geo,
+                ROUND(SUM(tot) / NULLIF(SUM(nb), 0)) as moy_prix_m2_rolling_year,
+                SUM(nb) as nb_mutations_apparts_maisons_rolling_year
+            FROM
+            (
+                SELECT
+                    (COALESCE(moy_prix_m2_maison * nb_ventes_maison, 0) + COALESCE(moy_prix_m2_appartement * nb_ventes_appartement, 0)) as tot,
+                    COALESCE(nb_ventes_maison, 0) + COALESCE(nb_ventes_appartement, 0) as nb,
+                    annee_mois,
+                    code_geo
+                FROM stats_dvf
+                WHERE
+                    echelle_geo='{echelle_geo}'
+                AND
+                    annee_mois > '{start_date}'
+        """
+        if (echelle_geo in ['departement', 'epci'] and code is not None) or echelle_geo in ['commune', 'section']:
+            sql += f"AND code_parent='{code}'"
+        sql += f"""
+            ) temp
+            GROUP BY code_geo
+        ) tbl1
+        RIGHT JOIN (
             SELECT
                 code_geo,
                 code_parent,
                 libelle_geo,
-                ROUND(SUM(tot) / NULLIF(SUM(nb), 0)) as moy_prix_m2_rolling_year 
-            FROM 
-                (
-                    SELECT 
-                        (COALESCE(moy_prix_m2_maison * nb_ventes_maison, 0) + COALESCE(moy_prix_m2_appartement * nb_ventes_appartement, 0)) as tot,
-                        COALESCE(nb_ventes_maison, 0) + COALESCE(nb_ventes_appartement, 0) as nb,
-                        annee_mois,
-                        code_parent,
-                        libelle_geo,
-                        code_geo
-                    FROM stats_dvf 
-                    WHERE 
-                        echelle_geo='{echelle_geo}'
-                    AND 
-                        annee_mois > '{start_date}'                        
+                SUM(COALESCE(nb_ventes_maison, 0)) as maisons,
+                SUM(COALESCE(nb_ventes_appartement, 0)) as appartements,
+                SUM(COALESCE(nb_ventes_local, 0)) as locaux
+            FROM stats_dvf
+            WHERE echelle_geo='{echelle_geo}'
         """
-
         if (echelle_geo in ['departement', 'epci'] and code is not None) or echelle_geo in ['commune', 'section']:
             sql += f"AND code_parent='{code}'"
-
         sql += """
-                ) tbl1
-            GROUP BY code_geo, code_parent, libelle_geo;
-        """
+        GROUP BY code_geo, code_parent, libelle_geo
+        ) tbl2
+        ON tbl1.code_geo = tbl2.code_geo;"""
         # print(sql)
         with connexion.cursor() as cursor:
             cursor.execute(sql)
