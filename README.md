@@ -27,7 +27,7 @@ Le répertoire DAGs contient les scripts du [DAG Airflow](https://airflow.apache
 Le fichier api_dvf.py permet de setup une API Flask sur la base de données des statistiques créée par le DAG.
 Les informations retournées par endpoint de l'API sont :
 
-* la moyenne du prix au m² sur un an glissant, maisons et appartements confondus, pour les niveaux d'échelle suivants :
+* la moyenne du prix au m² et le nombre de mutations sur un an glissant, maisons et appartements confondus, et le nombre total de mutations sur 5 ans (antériorité maximale des données DVF), pour les niveaux d'échelle suivants :
     - /departement (tous les départements)
     - /epci (toutes les EPCI, ou /departement/<code_departement>/epci pour une sélection restreinte)
     - /epci/<code_epci>/communes (toutes les communes de l'EPCI sélectionnée)
@@ -39,13 +39,17 @@ Par exemple, _/epci/246300701/communes_ renvoit une liste d'éléments comme sui
     "code_geo": "63075",
     "code_parent": "246300701",
     "libelle_geo": "Chamalieres",
-    "moy_prix_m2_rolling_year": 2563.0
+    "moy_prix_m2_rolling_year": 2563.0,
+    "nb_mutations_all_5_ans": 2292.0,
+    "nb_mutations_apparts_maisons_rolling_year": 104.0
 },
 {
     "code_geo": "63113",
     "code_parent": "246300701",
     "libelle_geo": "Clermont-Ferrand",
-    "moy_prix_m2_rolling_year": 2456.0
+    "moy_prix_m2_rolling_year": 2456.0,
+    "nb_mutations_all_5_ans": 13370.0,
+    "nb_mutations_apparts_maisons_rolling_year": 503.0
 },
 ...
 ```
