@@ -21,6 +21,7 @@ import DVF.config as config
 DATADIR= config.DATADIR
 QUERY_FILE = config.QUERY_FILE
 
+
 def get_epci():
     page = requests.get('https://unpkg.com/@etalab/decoupage-administratif/data/epci.json')
     epci = page.json()
@@ -31,6 +32,7 @@ def get_epci():
     }  for e in epci]
     epci_list = [[commune, d['code_epci'], d['libelle_geo']] for d in data for commune in d['liste_membres']]
     pd.DataFrame(epci_list, columns=['code_commune', 'code_epci', 'libelle_geo']).to_csv(DATADIR+'/epci.csv', sep=',', encoding='utf8', index=False)
+
 
 def pipeline(ti):
     years = sorted([int(f.replace('full_', '').replace('.csv', '')) for f in os.listdir(DATADIR) if 'full_' in f])
@@ -166,6 +168,10 @@ PRIMARY KEY (echelle_geo, code_geo, annee_mois, code_parent));
     ## attempt with xcoms unsuccessful
     # ti.xcom_push(key='query', value=query)
 
+    isExist = os.path.exists(DATADIR)
+    if not isExist:
+        os.makedirs(DATADIR)
+
     ## saving the custom query in a text file
     with open(DATADIR+'/'+QUERY_FILE, 'w') as f:
         f.write(query)
@@ -197,6 +203,7 @@ PRIMARY KEY (echelle_geo, code_geo, annee_mois, code_parent));
 
     export.to_csv(DATADIR+'/stats_dvf.csv', sep=',', encoding='utf8', index=False, float_format='%.0f')
 
+
 def send_csv_to_psql(connection, csv, table_):
     sql = "COPY %s FROM STDIN WITH CSV HEADER DELIMITER AS ','"
     file = open(csv, "r")
@@ -209,12 +216,26 @@ def send_csv_to_psql(connection, csv, table_):
         connection.close()
     # return connection.commit()
 
+
 def upload():
     hook = PostgresHook(postgres_conn_id='postgres_localhost')
     conn = hook.get_conn()
     cur = conn.cursor()
     conn.autocommit = True
     send_csv_to_psql(conn, DATADIR+'/stats_dvf.csv', 'stats_dvf')
+
+
+def create_table():
+    with open(DATADIR+'/'+QUERY_FILE, 'r') as f:
+        pg_task = PostgresOperator(
+            task_id='create_table',
+            postgres_conn_id='postgres_localhost',
+            ## potentiellement mieux d'utiliser xcom pour passer l'nfo, mais ne fonctionne pas actuellement
+            # sql="""(%s, '{{ ti.xcom_pull(task_ids= 'process_dvf', key='query') }}', %s)"""
+            sql=''.join(f.readlines()),
+        )
+        pg_task.execute(dict())
+
 
 ################################################################################
 
@@ -246,15 +267,13 @@ with DAG(
         task_id='process_dvf',
         python_callable=pipeline,
     )
+    
+    task4 = PythonOperator(
+        task_id='create_table',
+        python_callable=create_table,
+    )
 
-    with open(DATADIR+'/'+QUERY_FILE, 'r') as f:
-        task4 = PostgresOperator(
-            task_id='create_table',
-            postgres_conn_id='postgres_localhost',
-            ## potentiellement mieux d'utiliser xcom pour passer l'nfo, mais ne fonctionne pas actuellement
-            # sql="""(%s, '{{ ti.xcom_pull(task_ids= 'process_dvf', key='query') }}', %s)"""
-            sql=''.join(f.readlines()),
-        )
+
 
     task5 = PythonOperator(
         task_id='upload_table',
