@@ -1,4 +1,5 @@
 from flask import Flask, jsonify
+from flask_cors import CORS, cross_origin
 import json
 from unidecode import unidecode
 from markupsafe import escape
@@ -7,6 +8,8 @@ from datetime import date
 import config
 
 app = Flask(__name__)
+cors = CORS(app)
+app.config['CORS_HEADERS'] = 'Content-Type'
 
 id = config.PG_ID
 pwd = config.PG_PWD
