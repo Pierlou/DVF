@@ -6,6 +6,7 @@ from markupsafe import escape
 import psycopg2
 from datetime import date
 import config
+from ast import literal_eval
 
 app = Flask(__name__)
 cors = CORS(app)
@@ -108,19 +109,19 @@ def hello_world():
 def get_nation():
     with conn as connexion:
         with connexion.cursor() as cursor:
-            cursor.execute("""SELECT * FROM stats_dvf WHERE echelle_geo='nation' AND nb_ventes_appartement>0""")
+            cursor.execute("""SELECT * FROM stats_dvf WHERE echelle_geo='nation'""")
             columns = [desc[0] for desc in cursor.description]
-            data=cursor.fetchall()
-    return jsonify({"data": [{k:v for k,v in zip(columns, d)} for d in data]})
+            data = cursor.fetchall()
+    return jsonify({"data": [{k: v for k, v in zip(columns, d)} for d in data]})
 
 
 @app.route('/departement')
 @app.route('/departement/<code>')
-def get_departement(code = None):
+def get_departement(code=None):
     if code:
-       return process_geo("departement", code)
+        return process_geo("departement", code)
     else:
-       return create_moy_rolling_year("departement")
+        return create_moy_rolling_year("departement")
 
 
 @app.route('/epci')
@@ -167,11 +168,27 @@ def get_section_from_commune(code = None):
     return create_moy_rolling_year("section", code)
 
 
+@app.route('/distribution/<code>')
+def get_repartition_from_code_geo(code = None):
+    if code:
+        with conn as connexion:
+            sql = f"SELECT * FROM distribution_prix WHERE code_geo='{code}'"
+            with connexion.cursor() as cursor:
+                cursor.execute(sql)
+                columns = [desc[0] for desc in cursor.description]
+                data=cursor.fetchall()
+        return jsonify({"data":
+                        [{k: literal_eval(v) if isinstance(literal_eval(v), list) else v
+                          for k, v in zip(columns, d)} for d in data]
+                        })
+    return jsonify({"message": "Veuillez rentrer un code géo."})
+
+
 @app.route('/geo')
 @app.route('/geo/<echelle_geo>')
 @app.route('/geo/<echelle_geo>/<code_geo>/')
 @app.route('/geo/<echelle_geo>/<code_geo>/from=<dateminimum>&to=<datemaximum>')
-def get_echelle(echelle_geo= None, code_geo=None, dateminimum=None, datemaximum= None):
+def get_echelle(echelle_geo= None, code_geo=None, dateminimum=None, datemaximum=None):
     if echelle_geo is None:
         echelle_query = ''
     else:

@@ -1,10 +1,10 @@
 from aiohttp import web, ClientSession
 from markupsafe import escape
 import psycopg2
-from datetime import date
 import config
 import json
 import aiohttp_cors
+from ast import literal_eval
 
 
 id = config.PG_ID
@@ -27,7 +27,8 @@ conn = psycopg2.connect(
     port=port
 )
 
-def create_moy_rolling_year(echelle_geo, code = None, except_com = False):
+
+def create_moy_rolling_year(echelle_geo, code=None, except_com=False):
     with conn as connexion:
         sql = f"""
         SELECT
@@ -87,7 +88,7 @@ def create_moy_rolling_year(echelle_geo, code = None, except_com = False):
         with connexion.cursor() as cursor:
             cursor.execute(sql)
             columns = [desc[0] for desc in cursor.description]
-            data=cursor.fetchall()
+            data = cursor.fetchall()
     return jsonify({"data": [{k:v for k,v in zip(columns, d)} for d in data]})
 
 
@@ -97,9 +98,9 @@ def process_geo(echelle_geo, code):
         with connexion.cursor() as cursor:
             cursor.execute(sql)
             columns = [desc[0] for desc in cursor.description]
-            data=cursor.fetchall()
-    
-    return web.json_response(text=json.dumps({"data": [{k:v for k,v in zip(columns, d)} for d in data]}, default=str))
+            data = cursor.fetchall()
+
+    return web.json_response(text=json.dumps({"data": [{k: v for k, v in zip(columns, d)} for d in data]}, default=str))
 
 
 routes = web.RouteTableDef()
@@ -165,18 +166,7 @@ def create_moy_rolling_year(echelle_geo, code = None, except_com = False):
         with connexion.cursor() as cursor:
             cursor.execute(sql)
             columns = [desc[0] for desc in cursor.description]
-            data=cursor.fetchall()
-    return web.json_response(text=json.dumps({"data": [{k:v for k,v in zip(columns, d)} for d in data]}, default=str))
-
-
-
-def process_geo(echelle_geo, code):
-    with conn as connexion:
-        sql = f"SELECT * FROM stats_dvf WHERE echelle_geo='{echelle_geo}' AND code_geo = '{code}'"
-        with connexion.cursor() as cursor:
-            cursor.execute(sql)
-            columns = [desc[0] for desc in cursor.description]
-            data=cursor.fetchall()
+            data = cursor.fetchall()
     return web.json_response(text=json.dumps({"data": [{k:v for k,v in zip(columns, d)} for d in data]}, default=str))
 
 
@@ -191,7 +181,7 @@ def get_nation(request):
         with connexion.cursor() as cursor:
             cursor.execute("""SELECT * FROM stats_dvf WHERE echelle_geo='nation' AND nb_ventes_appartement>0""")
             columns = [desc[0] for desc in cursor.description]
-            data=cursor.fetchall()
+            data = cursor.fetchall()
     return web.json_response(text=json.dumps({"data": [{k:v for k,v in zip(columns, d)} for d in data]}, default=str))
 
 
@@ -203,7 +193,7 @@ def get_departement(request):
 
 @routes.get('/epci')
 def get_all_epci(request):
-   return create_moy_rolling_year("epci")
+    return create_moy_rolling_year("epci")
 
 
 @routes.get('/epci/{code}')
@@ -246,6 +236,24 @@ def get_commune_from_dep(request):
 def get_section_from_commune(request):
     code = request.match_info["code"]
     return create_moy_rolling_year("section", code)
+
+
+@routes.get('/repartition/<code>')
+def get_repartition_from_code_geo(request):
+    code = request.match_info["code"]
+    if code:
+        with conn as connexion:
+            sql = f"SELECT * FROM distribution_prix WHERE code_geo='{code}'"
+            with connexion.cursor() as cursor:
+                cursor.execute(sql)
+                columns = [desc[0] for desc in cursor.description]
+                data = cursor.fetchall()
+        return web.json_response(
+            text=json.dumps(
+                {"data": [{k: literal_eval(v) if isinstance(literal_eval(v), list) else v
+                           for k, v in zip(columns, d)} for d in data]},
+                default=str
+            ))
 
 
 @routes.get('/geo')
