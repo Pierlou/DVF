@@ -18,10 +18,10 @@ host = config.PG_HOST
 db = config.PG_DB
 port = config.PG_PORT
 
-# start_year = date.today().year - 1
-# start_month = '01' if date.today().month <= 6 else '06'
-start_year = 2021
-start_month = '06'
+start_year = date.today().year - 1
+start_month = '01' if date.today().month <= 6 else '06'
+# start_year = 2022
+# start_month = '01'
 start_date = str(start_year) + "-" + start_month
 
 conn = psycopg2.connect(
@@ -32,20 +32,26 @@ conn = psycopg2.connect(
     port=port)
 
 
-def create_moy_rolling_year(echelle_geo, code = None):
+def create_moy_rolling_year(echelle_geo, code=None):
     with conn as connexion:
         sql = f"""SELECT
             tbl2.code_geo,
             code_parent,
             libelle_geo,
             moy_prix_m2_rolling_year,
-            nb_mutations_apparts_maisons_rolling_year,
-            maisons + appartements + locaux as nb_mutations_all_5_ans
+            nb_mutations_appart_maison_rolling_year,
+            nb_mutations_maison_5ans,
+            nb_mutations_appartement_5ans,
+            nb_mutations_local_5ans,
+            tot_appart_maison / NULLIF((nb_mutations_appartement_5ans + nb_mutations_maison_5ans), 0) as moy_prix_m2_appart_maison_5ans,
+            tot_maison / NULLIF(nb_mutations_maison_5ans, 0) as moy_prix_m2_maison_5ans,
+            tot_appart / NULLIF(nb_mutations_appartement_5ans, 0) as moy_prix_m2_appart_5ans,
+            tot_local / NULLIF(nb_mutations_local_5ans, 0) as moy_prix_m2_local_5ans
         FROM (
             SELECT
                 code_geo,
                 ROUND(SUM(tot) / NULLIF(SUM(nb), 0)) as moy_prix_m2_rolling_year,
-                SUM(nb) as nb_mutations_apparts_maisons_rolling_year
+                SUM(nb) as nb_mutations_appart_maison_rolling_year
             FROM
             (
                 SELECT
@@ -70,9 +76,13 @@ def create_moy_rolling_year(echelle_geo, code = None):
                 code_geo,
                 code_parent,
                 libelle_geo,
-                SUM(COALESCE(nb_ventes_maison, 0)) as maisons,
-                SUM(COALESCE(nb_ventes_appartement, 0)) as appartements,
-                SUM(COALESCE(nb_ventes_local, 0)) as locaux
+                SUM(COALESCE(nb_ventes_maison, 0)) as nb_mutations_maison_5ans,
+                SUM(COALESCE(nb_ventes_appartement, 0)) as nb_mutations_appartement_5ans,
+                SUM(COALESCE(nb_ventes_local, 0)) as nb_mutations_local_5ans,
+                SUM((COALESCE(moy_prix_m2_maison * nb_ventes_maison, 0) + COALESCE(moy_prix_m2_appartement * nb_ventes_appartement, 0))) as tot_appart_maison,
+                SUM(COALESCE(moy_prix_m2_maison * nb_ventes_maison, 0)) as tot_maison,
+                SUM(COALESCE(moy_prix_m2_appartement * nb_ventes_appartement, 0)) as tot_appart,
+                SUM(COALESCE(moy_prix_m2_local * nb_ventes_local, 0)) as tot_local
             FROM stats_dvf
             WHERE echelle_geo='{echelle_geo}'
         """
@@ -86,7 +96,7 @@ def create_moy_rolling_year(echelle_geo, code = None):
         with connexion.cursor() as cursor:
             cursor.execute(sql)
             columns = [desc[0] for desc in cursor.description]
-            data=cursor.fetchall()
+            data = cursor.fetchall()
     return jsonify({"data": [{k:v for k,v in zip(columns, d)} for d in data]})
 
 
@@ -96,8 +106,8 @@ def process_geo(echelle_geo, code):
         with connexion.cursor() as cursor:
             cursor.execute(sql)
             columns = [desc[0] for desc in cursor.description]
-            data=cursor.fetchall()
-    return jsonify({"data": [{k:v for k,v in zip(columns, d)} for d in data]})
+            data = cursor.fetchall()
+    return jsonify({"data": [{k: v for k, v in zip(columns, d)} for d in data]})
 
 
 @app.route("/")
@@ -126,57 +136,57 @@ def get_departement(code=None):
 
 @app.route('/epci')
 @app.route('/epci/<code>')
-def get_epci(code = None):
+def get_epci(code=None):
     if code:
         return process_geo("epci", code)
     else:
-       return create_moy_rolling_year("epci")
+        return create_moy_rolling_year("epci")
 
 
 @app.route('/commune')
 @app.route('/commune/<code>')
-def get_commune(code = None):
+def get_commune(code=None):
     if code:
         return process_geo("commune", code)
     else:
-        ## trop de lignes et pas de besoin de la totalité des communes : sélection uniquement par département
+        # trop de lignes et pas de besoin de la totalité des communes : sélection uniquement par département
         return jsonify({"message": "Veuillez rentrer un numero de commune."})
 
 
 @app.route('/section')
 @app.route('/section/<code>')
-def get_section(code = None):
+def get_section(code=None):
     if code:
         return process_geo("section", code)
     else:
-        ## trop de lignes et pas de besoin de la totalité des sections : sélection uniquement par commune
+        # trop de lignes et pas de besoin de la totalité des sections : sélection uniquement par commune
         return jsonify({"message": "Veuillez rentrer un numero de section."})
 
 
 @app.route('/departement/<code>/epci')
-def get_epci_from_dep(code = None):
+def get_epci_from_dep(code=None):
     return create_moy_rolling_year("epci", code)
 
 
 @app.route('/epci/<code>/communes')
-def get_commune_from_dep(code = None):
+def get_commune_from_dep(code=None):
     return create_moy_rolling_year("commune", code)
 
 
 @app.route('/commune/<code>/sections')
-def get_section_from_commune(code = None):
+def get_section_from_commune(code=None):
     return create_moy_rolling_year("section", code)
 
 
 @app.route('/distribution/<code>')
-def get_repartition_from_code_geo(code = None):
+def get_repartition_from_code_geo(code=None):
     if code:
         with conn as connexion:
             sql = f"SELECT * FROM distribution_prix WHERE code_geo='{code}'"
             with connexion.cursor() as cursor:
                 cursor.execute(sql)
                 columns = [desc[0] for desc in cursor.description]
-                data=cursor.fetchall()
+                data = cursor.fetchall()
         return jsonify({"data":
                         [{k: literal_eval(v) if isinstance(literal_eval(v), list) else v
                           for k, v in zip(columns, d)} for d in data]
@@ -188,35 +198,35 @@ def get_repartition_from_code_geo(code = None):
 @app.route('/geo/<echelle_geo>')
 @app.route('/geo/<echelle_geo>/<code_geo>/')
 @app.route('/geo/<echelle_geo>/<code_geo>/from=<dateminimum>&to=<datemaximum>')
-def get_echelle(echelle_geo= None, code_geo=None, dateminimum=None, datemaximum=None):
+def get_echelle(echelle_geo=None, code_geo=None, dateminimum=None, datemaximum=None):
     if echelle_geo is None:
         echelle_query = ''
     else:
         echelle_query = f"echelle_geo='{escape(echelle_geo)}'"
-        
+
     if code_geo is None:
         code_query = ''
     else:
         code_query = f"code_geo='{escape(code_geo)}'"
-        
-    if dateminimum is None or datemaximum is None :
+
+    if dateminimum is None or datemaximum is None:
         date_query = ''
     else:
         date_query = f"annee_mois>='{escape(dateminimum)}' AND annee_mois<='{escape(datemaximum)}'"
-    
+
     queries = [echelle_query, code_query, date_query]
-    queries = [q for q in queries if q!='']
-    
+    queries = [q for q in queries if q != '']
+
     with conn as connexion:
         with connexion.cursor() as cursor:
-            if len(queries)==0:
+            if len(queries) == 0:
                 cursor.execute("""SELECT * FROM stats_dvf""")
             else:
                 cursor.execute(f"""SELECT * FROM stats_dvf WHERE """ + ' AND '.join(queries))
             columns = [desc[0] for desc in cursor.description]
-            data=cursor.fetchall()
-    return jsonify({"data": [{k:v for k,v in zip(columns, d)} for d in data]})
-    
+            data = cursor.fetchall()
+    return jsonify({"data": [{k: v for k, v in zip(columns, d)} for d in data]})
+
 
 if __name__ == '__main__':
-	app.run(host='0.0.0.0', port=3030, debug=True)
+    app.run(host='0.0.0.0', port=3030, debug=True)

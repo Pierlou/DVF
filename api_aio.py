@@ -5,6 +5,7 @@ import config
 import json
 import aiohttp_cors
 from ast import literal_eval
+from datetime import date
 
 
 id = config.PG_ID
@@ -13,10 +14,10 @@ host = config.PG_HOST
 db = config.PG_DB
 port = config.PG_PORT
 
-# start_year = date.today().year - 1
-# start_month = '01' if date.today().month <= 6 else '06'
-start_year = 2021
-start_month = '06'
+start_year = date.today().year - 1
+start_month = '01' if date.today().month <= 6 else '06'
+# start_year = 2022
+# start_month = '01'
 start_date = str(start_year) + "-" + start_month
 
 conn = psycopg2.connect(
@@ -30,19 +31,24 @@ conn = psycopg2.connect(
 
 def create_moy_rolling_year(echelle_geo, code=None, except_com=False):
     with conn as connexion:
-        sql = f"""
-        SELECT
+        sql = f"""SELECT
             tbl2.code_geo,
             code_parent,
             libelle_geo,
             moy_prix_m2_rolling_year,
-            nb_mutations_apparts_maisons_rolling_year,
-            maisons + appartements + locaux as nb_mutations_all_5_ans
+            nb_mutations_appart_maison_rolling_year,
+            nb_mutations_maison_5ans,
+            nb_mutations_appartement_5ans,
+            nb_mutations_local_5ans,
+            tot_appart_maison / NULLIF((nb_mutations_appartement_5ans + nb_mutations_maison_5ans), 0) as moy_prix_m2_appart_maison_5ans,
+            tot_maison / NULLIF(nb_mutations_maison_5ans, 0) as moy_prix_m2_maison_5ans,
+            tot_appart / NULLIF(nb_mutations_appartement_5ans, 0) as moy_prix_m2_appart_5ans,
+            tot_local / NULLIF(nb_mutations_local_5ans, 0) as moy_prix_m2_local_5ans
         FROM (
             SELECT
                 code_geo,
                 ROUND(SUM(tot) / NULLIF(SUM(nb), 0)) as moy_prix_m2_rolling_year,
-                SUM(nb) as nb_mutations_apparts_maisons_rolling_year
+                SUM(nb) as nb_mutations_appart_maison_rolling_year
             FROM
             (
                 SELECT
@@ -54,13 +60,10 @@ def create_moy_rolling_year(echelle_geo, code=None, except_com=False):
                 WHERE
                     echelle_geo='{echelle_geo}'
                 AND
-                    annee_mois > '{start_date}' """
-
+                    annee_mois > '{start_date}'
+        """
         if (echelle_geo in ['departement', 'epci'] and code is not None) or echelle_geo in ['commune', 'section']:
-            if not except_com:
-                sql += f"AND code_parent='{code}'"
-            else:
-                sql += f"AND SUBSTRING(code_geo, 1, 2)='{code}'"
+            sql += f"AND code_parent='{code}'"
         sql += f"""
             ) temp
             GROUP BY code_geo
@@ -70,17 +73,18 @@ def create_moy_rolling_year(echelle_geo, code=None, except_com=False):
                 code_geo,
                 code_parent,
                 libelle_geo,
-                SUM(COALESCE(nb_ventes_maison, 0)) as maisons,
-                SUM(COALESCE(nb_ventes_appartement, 0)) as appartements,
-                SUM(COALESCE(nb_ventes_local, 0)) as locaux
+                SUM(COALESCE(nb_ventes_maison, 0)) as nb_mutations_maison_5ans,
+                SUM(COALESCE(nb_ventes_appartement, 0)) as nb_mutations_appartement_5ans,
+                SUM(COALESCE(nb_ventes_local, 0)) as nb_mutations_local_5ans,
+                SUM((COALESCE(moy_prix_m2_maison * nb_ventes_maison, 0) + COALESCE(moy_prix_m2_appartement * nb_ventes_appartement, 0))) as tot_appart_maison,
+                SUM(COALESCE(moy_prix_m2_maison * nb_ventes_maison, 0)) as tot_maison,
+                SUM(COALESCE(moy_prix_m2_appartement * nb_ventes_appartement, 0)) as tot_appart,
+                SUM(COALESCE(moy_prix_m2_local * nb_ventes_local, 0)) as tot_local
             FROM stats_dvf
             WHERE echelle_geo='{echelle_geo}'
         """
         if (echelle_geo in ['departement', 'epci'] and code is not None) or echelle_geo in ['commune', 'section']:
-            if not except_com:
-                sql += f"AND code_parent='{code}'"
-            else:
-                sql += f"AND SUBSTRING(code_geo, 1, 2)='{code}'"
+            sql += f"AND code_parent='{code}'"
         sql += """
         GROUP BY code_geo, code_parent, libelle_geo
         ) tbl2
@@ -89,7 +93,7 @@ def create_moy_rolling_year(echelle_geo, code=None, except_com=False):
             cursor.execute(sql)
             columns = [desc[0] for desc in cursor.description]
             data = cursor.fetchall()
-    return jsonify({"data": [{k:v for k,v in zip(columns, d)} for d in data]})
+    return web.json_response(text=json.dumps({"data": [{k: v for k, v in zip(columns, d)} for d in data]}, default=str))
 
 
 def process_geo(echelle_geo, code):
@@ -106,70 +110,6 @@ def process_geo(echelle_geo, code):
 routes = web.RouteTableDef()
 
 
-def create_moy_rolling_year(echelle_geo, code = None, except_com = False):
-    with conn as connexion:
-        sql = f"""
-        SELECT
-            tbl2.code_geo,
-            code_parent,
-            libelle_geo,
-            moy_prix_m2_rolling_year,
-            nb_mutations_apparts_maisons_rolling_year,
-            maisons + appartements + locaux as nb_mutations_all_5_ans
-        FROM (
-            SELECT
-                code_geo,
-                ROUND(SUM(tot) / NULLIF(SUM(nb), 0)) as moy_prix_m2_rolling_year,
-                SUM(nb) as nb_mutations_apparts_maisons_rolling_year
-            FROM
-            (
-                SELECT
-                    (COALESCE(moy_prix_m2_maison * nb_ventes_maison, 0) + COALESCE(moy_prix_m2_appartement * nb_ventes_appartement, 0)) as tot,
-                    COALESCE(nb_ventes_maison, 0) + COALESCE(nb_ventes_appartement, 0) as nb,
-                    annee_mois,
-                    code_geo
-                FROM stats_dvf
-                WHERE
-                    echelle_geo='{echelle_geo}'
-                AND
-                    annee_mois > '{start_date}' """
-
-        if (echelle_geo in ['departement', 'epci'] and code is not None) or echelle_geo in ['commune', 'section']:
-            if not except_com:
-                sql += f"AND code_parent='{code}'"
-            else:
-                sql += f"AND SUBSTRING(code_geo, 1, 2)='{code}'"
-        sql += f"""
-            ) temp
-            GROUP BY code_geo
-        ) tbl1
-        RIGHT JOIN (
-            SELECT
-                code_geo,
-                code_parent,
-                libelle_geo,
-                SUM(COALESCE(nb_ventes_maison, 0)) as maisons,
-                SUM(COALESCE(nb_ventes_appartement, 0)) as appartements,
-                SUM(COALESCE(nb_ventes_local, 0)) as locaux
-            FROM stats_dvf
-            WHERE echelle_geo='{echelle_geo}'
-        """
-        if (echelle_geo in ['departement', 'epci'] and code is not None) or echelle_geo in ['commune', 'section']:
-            if not except_com:
-                sql += f"AND code_parent='{code}'"
-            else:
-                sql += f"AND SUBSTRING(code_geo, 1, 2)='{code}'"
-        sql += """
-        GROUP BY code_geo, code_parent, libelle_geo
-        ) tbl2
-        ON tbl1.code_geo = tbl2.code_geo;"""
-        with connexion.cursor() as cursor:
-            cursor.execute(sql)
-            columns = [desc[0] for desc in cursor.description]
-            data = cursor.fetchall()
-    return web.json_response(text=json.dumps({"data": [{k:v for k,v in zip(columns, d)} for d in data]}, default=str))
-
-
 @routes.get("/")
 def hello_world(request):
     return "<p>Données DVF agrégées</p>"
@@ -182,7 +122,12 @@ def get_nation(request):
             cursor.execute("""SELECT * FROM stats_dvf WHERE echelle_geo='nation' AND nb_ventes_appartement>0""")
             columns = [desc[0] for desc in cursor.description]
             data = cursor.fetchall()
-    return web.json_response(text=json.dumps({"data": [{k:v for k,v in zip(columns, d)} for d in data]}, default=str))
+    return web.json_response(text=json.dumps({"data": [{k: v for k, v in zip(columns, d)} for d in data]}, default=str))
+
+
+@routes.get('/departement')
+def get_all_departement(request):
+    return create_moy_rolling_year("departement")
 
 
 @routes.get('/departement/{code}')
@@ -238,7 +183,7 @@ def get_section_from_commune(request):
     return create_moy_rolling_year("section", code)
 
 
-@routes.get('/repartition/<code>')
+@routes.get('/distribution/<code>')
 def get_repartition_from_code_geo(request):
     code = request.match_info["code"]
     if code:
@@ -269,31 +214,30 @@ def get_echelle(request):
         echelle_query = ''
     else:
         echelle_query = f"echelle_geo='{escape(echelle_geo)}'"
-        
+
     if code_geo is None:
         code_query = ''
     else:
         code_query = f"code_geo='{escape(code_geo)}'"
-        
-    if dateminimum is None or datemaximum is None :
+
+    if dateminimum is None or datemaximum is None:
         date_query = ''
     else:
         date_query = f"annee_mois>='{escape(dateminimum)}' AND annee_mois<='{escape(datemaximum)}'"
-    
+
     queries = [echelle_query, code_query, date_query]
-    queries = [q for q in queries if q!='']
-    
+    queries = [q for q in queries if q != '']
+
     with conn as connexion:
         with connexion.cursor() as cursor:
-            if len(queries)==0:
+            if len(queries) == 0:
                 cursor.execute("""SELECT * FROM stats_dvf""")
             else:
                 cursor.execute(f"""SELECT * FROM stats_dvf WHERE """ + ' AND '.join(queries))
             columns = [desc[0] for desc in cursor.description]
-            data=cursor.fetchall()
-    return web.json_response(text=json.dumps({"data": [{k:v for k,v in zip(columns, d)} for d in data]}, default=str))
+            data = cursor.fetchall()
+    return web.json_response(text=json.dumps({"data": [{k: v for k, v in zip(columns, d)} for d in data]}, default=str))
 
-    
 
 async def app_factory():
 
@@ -320,7 +264,6 @@ async def app_factory():
     )
     for route in list(app.router.routes()):
         cors.add(route)
-    
     return app
 
 
