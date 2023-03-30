@@ -187,8 +187,9 @@ def get_repartition_from_code_geo(code=None):
                 cursor.execute(sql)
                 columns = [desc[0] for desc in cursor.description]
                 data = cursor.fetchall()
+        print(data)
         return jsonify({"data":
-                        [{k: literal_eval(v) if isinstance(literal_eval(v), list) else v
+                        [{k: literal_eval(v) if v.startswith('[') and isinstance(literal_eval(v), list) else v
                           for k, v in zip(columns, d)} for d in data]
                         })
     return jsonify({"message": "Veuillez rentrer un code géo."})

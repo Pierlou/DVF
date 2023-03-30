@@ -195,7 +195,7 @@ def get_repartition_from_code_geo(request):
                 data = cursor.fetchall()
         return web.json_response(
             text=json.dumps(
-                {"data": [{k: literal_eval(v) if isinstance(literal_eval(v), list) else v
+                {"data": [{k: literal_eval(v) if v.startswith('[') and isinstance(literal_eval(v), list) else v
                            for k, v in zip(columns, d)} for d in data]},
                 default=str
             ))
