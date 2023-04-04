@@ -29,7 +29,7 @@ conn = psycopg2.connect(
 )
 
 
-def create_moy_rolling_year(echelle_geo, code=None, except_com=False):
+def create_moy_rolling_year(echelle_geo, code=None, case_dep_commune=False):
     with conn as connexion:
         sql = f"""SELECT
             tbl2.code_geo,
@@ -63,7 +63,10 @@ def create_moy_rolling_year(echelle_geo, code=None, except_com=False):
                     annee_mois > '{start_date}'
         """
         if (echelle_geo in ['departement', 'epci'] and code is not None) or echelle_geo in ['commune', 'section']:
-            sql += f"AND code_parent='{code}'"
+            if not case_dep_commune:
+                sql += f"AND code_parent='{code}'"
+            else:
+                sql += f"AND LEFT(code_geo, 2)='{code}'"
         sql += f"""
             ) temp
             GROUP BY code_geo
@@ -84,7 +87,10 @@ def create_moy_rolling_year(echelle_geo, code=None, except_com=False):
             WHERE echelle_geo='{echelle_geo}'
         """
         if (echelle_geo in ['departement', 'epci'] and code is not None) or echelle_geo in ['commune', 'section']:
-            sql += f"AND code_parent='{code}'"
+            if not case_dep_commune:
+                sql += f"AND code_parent='{code}'"
+            else:
+                sql += f"AND LEFT(code_geo, 2)='{code}'"
         sql += """
         GROUP BY code_geo, code_parent, libelle_geo
         ) tbl2
@@ -115,14 +121,19 @@ def hello_world(request):
     return "<p>Données DVF agrégées</p>"
 
 
-@routes.get('/nation')
+@routes.get('/nation/mois')
 def get_nation(request):
     with conn as connexion:
         with connexion.cursor() as cursor:
-            cursor.execute("""SELECT * FROM stats_dvf WHERE echelle_geo='nation' AND nb_ventes_appartement>0""")
+            cursor.execute("""SELECT * FROM stats_dvf WHERE echelle_geo='nation'""")
             columns = [desc[0] for desc in cursor.description]
             data = cursor.fetchall()
     return web.json_response(text=json.dumps({"data": [{k: v for k, v in zip(columns, d)} for d in data]}, default=str))
+
+
+@routes.get('/nation')
+def get_all_nation(request):
+    return create_moy_rolling_year("nation")
 
 
 @routes.get('/departement')
@@ -168,7 +179,7 @@ def get_epci_from_dep(request):
 @routes.get('/departement/{code}/communes')
 def get_communes_from_dep(request):
     code = request.match_info["code"]
-    return create_moy_rolling_year("commune", code, True)
+    return create_moy_rolling_year("commune", code, case_dep_commune=True)
 
 
 @routes.get('/epci/{code}/communes')

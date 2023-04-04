@@ -32,7 +32,7 @@ conn = psycopg2.connect(
     port=port)
 
 
-def create_moy_rolling_year(echelle_geo, code=None):
+def create_moy_rolling_year(echelle_geo, code=None, case_dep_commune=False):
     with conn as connexion:
         sql = f"""SELECT
             tbl2.code_geo,
@@ -66,7 +66,10 @@ def create_moy_rolling_year(echelle_geo, code=None):
                     annee_mois > '{start_date}'
         """
         if (echelle_geo in ['departement', 'epci'] and code is not None) or echelle_geo in ['commune', 'section']:
-            sql += f"AND code_parent='{code}'"
+            if not case_dep_commune:
+                sql += f"AND code_parent='{code}'"
+            else:
+                sql += f"AND LEFT(code_geo, 2)='{code}'"
         sql += f"""
             ) temp
             GROUP BY code_geo
@@ -87,7 +90,10 @@ def create_moy_rolling_year(echelle_geo, code=None):
             WHERE echelle_geo='{echelle_geo}'
         """
         if (echelle_geo in ['departement', 'epci'] and code is not None) or echelle_geo in ['commune', 'section']:
-            sql += f"AND code_parent='{code}'"
+            if not case_dep_commune:
+                sql += f"AND code_parent='{code}'"
+            else:
+                sql += f"AND LEFT(code_geo, 2)='{code}'"
         sql += """
         GROUP BY code_geo, code_parent, libelle_geo
         ) tbl2
@@ -115,7 +121,7 @@ def hello_world():
     return "<p>Données DVF agrégées</p>"
 
 
-@app.route('/nation')
+@app.route('/nation/mois')
 def get_nation():
     with conn as connexion:
         with connexion.cursor() as cursor:
@@ -123,6 +129,11 @@ def get_nation():
             columns = [desc[0] for desc in cursor.description]
             data = cursor.fetchall()
     return jsonify({"data": [{k: v for k, v in zip(columns, d)} for d in data]})
+
+
+@app.route('/nation')
+def get_all_nation(code=None):
+    return create_moy_rolling_year("nation")
 
 
 @app.route('/departement')
@@ -168,8 +179,13 @@ def get_epci_from_dep(code=None):
     return create_moy_rolling_year("epci", code)
 
 
-@app.route('/epci/<code>/communes')
+@app.route('/departement/<code>/communes')
 def get_commune_from_dep(code=None):
+    return create_moy_rolling_year("commune", code, case_dep_commune=True)
+
+
+@app.route('/epci/<code>/communes')
+def get_commune_from_epci(code=None):
     return create_moy_rolling_year("commune", code)
 
 
