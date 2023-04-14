@@ -204,12 +204,15 @@ def get_repartition_from_code_geo(request):
                 cursor.execute(sql)
                 columns = [desc[0] for desc in cursor.description]
                 data = cursor.fetchall()
-        return web.json_response(
-            text=json.dumps(
-                {"data": [{k: literal_eval(v) if v.startswith('[') and isinstance(literal_eval(v), list) else v
-                           for k, v in zip(columns, d)} for d in data]},
-                default=str
-            ))
+        data = {
+            "data":
+            [{k: literal_eval(v) if v is not None and (v.startswith('[') and isinstance(literal_eval(v), list)) else v
+             for k, v in zip(columns, d)} for d in data]
+        }
+        res = {'code_geo': data['data'][0]['code_geo']}
+        for d in data['data']:
+            res[d['type_local']] = {'xaxis': d['xaxis'], 'yaxis': d['yaxis']}
+        return web.json_response(text=json.dumps(res, default=str))
 
 
 @routes.get('/geo')
