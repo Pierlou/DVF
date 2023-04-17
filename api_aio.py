@@ -194,7 +194,7 @@ def get_section_from_commune(request):
     return create_moy_rolling_year("section", code)
 
 
-@routes.get('/distribution/<code>')
+@routes.get('/distribution/{code}')
 def get_repartition_from_code_geo(request):
     code = request.match_info["code"]
     if code:
